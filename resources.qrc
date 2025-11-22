@@ -1,0 +1,25 @@
+<RCC>
+  <qresource prefix="images">
+    <file>images/bar-chart-histogram-1.png</file>
+    <file>images/pie_chart.jpg</file>
+    <file>images/results.png</file>
+    <file>images/population-pie-chart@750.png</file>
+    <file>images/applyche.jpg</file>
+    <file>images/email_template.jpg</file>
+    <file>images/hamburgerbutton.png</file>
+    <file>images/help.png</file>
+    <file>images/home.png</file>
+    <file>images/logo.png</file>
+    <file>images/notif_no.png</file>
+    <file>images/notif_yes.png</file>
+    <file>images/pngtree-vector-logout-icon-png-image_958608.jpg</file>
+    <file>images/pngtree-vector-search-icon-png-image_847710.jpg</file>
+    <file>images/power.png</file>
+    <file>images/professors.png</file>
+    <file>images/profile.png</file>
+    <file>images/report.png</file>
+    <file>images/send_email.png</file>
+    <file>images/setting.png</file>
+    <file>images/write_your_Exprience.png</file>
+  </qresource>
+</RCC>

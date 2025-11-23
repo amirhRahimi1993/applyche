@@ -3,7 +3,7 @@ API Client for main_ui.py to interact with FastAPI backend
 """
 import requests
 from typing import Optional, Dict, List, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class ApplyCheAPIClient:
@@ -147,7 +147,7 @@ class ApplyCheAPIClient:
                                 scheduled_at: Optional[datetime] = None) -> Dict:
         """Add email to queue"""
         if scheduled_at is None:
-            scheduled_at = datetime.now()
+            scheduled_at = datetime.now(timezone.utc)
         
         return self._post("/api/email-queue/", {
             "user_email": user_email,

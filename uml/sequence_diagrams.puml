@@ -1,0 +1,136 @@
+@startuml Sequence - Email Sending Workflow
+actor User
+participant "PyQt6 UI" as UI
+participant "Prepare_send_mail" as Prep
+participant "Coordinator" as Coord
+participant "EventBus" as Bus
+participant "SendMailController" as Ctrl
+participant "SMTP Server" as SMTP
+database "PostgreSQL" as DB
+
+User -> UI: Click "Start Sending"
+activate UI
+UI -> Prep: User clicks button
+activate Prep
+Prep -> Prep: Prepare email data
+Prep -> Coord: start_sending(info)
+activate Coord
+Coord -> Bus: publish("start_sending", info)
+activate Bus
+Bus -> Ctrl: start_sending(info)
+activate Ctrl
+
+Ctrl -> Ctrl: Validate email provider
+Ctrl -> SMTP: Connect & Login
+activate SMTP
+SMTP --> Ctrl: Connection established
+
+loop For each recipient
+  Ctrl -> Ctrl: Format email body
+  Ctrl -> SMTP: Send email
+  SMTP --> Ctrl: Email sent
+  Ctrl -> DB: Log to SendLog
+  Ctrl -> Bus: publish("log", message)
+  Bus -> Coord: _on_log_received(message)
+  Coord -> UI: display_log(message)
+  Ctrl -> Ctrl: Wait 4.5-5.5 minutes
+end
+
+Ctrl -> SMTP: Quit connection
+deactivate SMTP
+Ctrl -> Bus: publish("log", "All emails sent")
+Bus -> Coord: _on_log_received("All emails sent")
+Coord -> UI: display_log("All emails sent")
+deactivate Ctrl
+deactivate Bus
+deactivate Coord
+deactivate Prep
+deactivate UI
+@enduml
+
+@startuml Sequence - API Request Flow
+participant "Client App" as Client
+participant "FastAPI App" as API
+participant "API Router" as Router
+participant "Pydantic Schema" as Schema
+participant "Database Session" as DB
+participant "SQLAlchemy ORM" as ORM
+database "PostgreSQL" as PG
+
+Client -> API: HTTP POST /api/email-templates/
+activate API
+API -> Router: Route to email_templates.py
+activate Router
+Router -> Schema: Validate EmailTemplateCreate
+activate Schema
+Schema --> Router: Validated data
+deactivate Schema
+
+Router -> DB: get_db() dependency
+activate DB
+DB --> Router: Session object
+
+Router -> ORM: Create EmailTemplate instance
+activate ORM
+Router -> DB: db.add(db_template)
+Router -> DB: db.commit()
+DB -> ORM: Execute INSERT
+ORM -> PG: SQL INSERT statement
+activate PG
+PG --> ORM: Success response
+deactivate PG
+ORM --> DB: Commit transaction
+deactivate ORM
+DB --> Router: Template created
+deactivate DB
+
+Router -> Schema: Convert to EmailTemplateResponse
+activate Schema
+Schema --> Router: Response model
+deactivate Schema
+
+Router --> API: JSON response
+deactivate Router
+API --> Client: HTTP 200 + JSON
+deactivate API
+@enduml
+
+@startuml Sequence - Dashboard Data Loading
+participant "MyWindow" as UI
+participant "Dashboard" as Dash
+participant "Dashboard_model" as Model
+database "PostgreSQL" as DB
+participant "FastAPI (Future)" as API
+
+UI -> Dash: __init__(widget)
+activate Dash
+UI -> Dash: report()
+Dash -> Model: analysis_email("main_mail")
+activate Model
+Model -> DB: SELECT COUNT(...) FROM email_report
+activate DB
+DB --> Model: Count result
+deactivate DB
+Model --> Dash: Data
+deactivate Model
+Dash -> Dash: Update UI labels
+
+UI -> Dash: chart_email_answered_by_professor()
+Dash -> Model: Query answered emails
+activate Model
+Model -> DB: SELECT ... WHERE contact_status = 3
+activate DB
+DB --> Model: Results
+deactivate DB
+Model --> Dash: Data
+deactivate Model
+Dash -> Dash: Create pie chart
+
+note over API: Future: Replace direct DB\naccess with API calls
+UI -> API: GET /api/dashboard/stats/{email}
+activate API
+API --> UI: DashboardStats JSON
+deactivate API
+deactivate Dash
+@enduml
+

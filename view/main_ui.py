@@ -211,9 +211,14 @@ class EmailEditor(QtCore.QObject):
         
         # Initialize API client
         try:
-            self.api_client = ApplyCheAPIClient("http://localhost:8000")
+            self.api_client = ApplyCheAPIClient("http://localhost:8000", timeout=3)
+            # Check if API is available (don't fail if it's not)
+            if not self.api_client.is_available():
+                print("Info: FastAPI server is not running. Templates will be saved locally only.")
+                # Keep the client but mark it as unavailable
+                self.api_client = None
         except Exception as e:
-            print(f"Warning: Could not connect to API: {e}")
+            print(f"Info: API client initialization failed: {e}")
             self.api_client = None
 
         # Store uploaded files per editor
@@ -365,7 +370,9 @@ class EmailEditor(QtCore.QObject):
     # =============== Load Templates from DB =============
     # ====================================================
     def _load_templates_from_db(self):
-        """Load email templates from database and populate UI"""
+        """Load email templates from database and populate UI
+        Optimized to use a single batch API call instead of 4 separate calls
+        """
         if not self.api_client:
             return
         
@@ -377,9 +384,17 @@ class EmailEditor(QtCore.QObject):
             "third_reminder": (3, self.txt_third_reminder)
         }
         
-        for template_key, (template_type, editor) in template_mapping.items():
-            try:
-                template = self.api_client.get_template_by_type(self.user_email, template_type)
+        try:
+            # Use batch API call to fetch all templates at once (much faster)
+            template_types = [0, 1, 2, 3]
+            templates = self.api_client.get_templates_by_types(self.user_email, template_types)
+            
+            # Create a lookup dictionary by template_type
+            templates_by_type = {t.get("template_type"): t for t in templates}
+            
+            # Process each template
+            for template_key, (template_type, editor) in template_mapping.items():
+                template = templates_by_type.get(template_type)
                 if template:
                     # Store template ID for updates
                     self.template_ids[template_key] = template.get("id")
@@ -414,8 +429,20 @@ class EmailEditor(QtCore.QObject):
                         
                         # Update attachment summary
                         self._update_attachment_summary(editor)
-            except Exception as e:
-                print(f"Error loading template {template_key}: {e}")
+        except Exception as e:
+            print(f"Error loading templates from database: {e}")
+            # Fallback: try individual calls if batch fails
+            for template_key, (template_type, editor) in template_mapping.items():
+                try:
+                    template = self.api_client.get_template_by_type(self.user_email, template_type)
+                    if template:
+                        self.template_ids[template_key] = template.get("id")
+                        if editor:
+                            editor.setHtml(template.get("template_body", ""))
+                        if template_key == "main_template" and self.txt_main_subject:
+                            self.txt_main_subject.setText(template.get("subject", ""))
+                except Exception as e2:
+                    print(f"Error loading template {template_key}: {e2}")
 
     # ====================================================
     # =============== Bold / Italic ======================

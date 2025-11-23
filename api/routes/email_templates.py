@@ -2,7 +2,7 @@
 Email Templates API routes using SQLAlchemy ORM
 """
 from fastapi import APIRouter, HTTPException, Depends, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from api.database import get_db
 from api.models import (
     EmailTemplateCreate,
@@ -70,7 +70,10 @@ async def get_email_templates(user_email: str, db: Session = Depends(get_db)):
     Get all email templates for a user
     """
     try:
-        templates = db.query(EmailTemplate).filter(
+        # Use joinedload to eagerly load template_files relationship (prevents N+1 queries)
+        templates = db.query(EmailTemplate).options(
+            joinedload(EmailTemplate.template_files)
+        ).filter(
             EmailTemplate.user_email == user_email
         ).order_by(EmailTemplate.created_at.desc()).all()
         
@@ -96,7 +99,10 @@ async def get_email_template(user_email: str, template_id: int, db: Session = De
     Get a specific email template
     """
     try:
-        template = db.query(EmailTemplate).filter(
+        # Use joinedload to eagerly load template_files relationship
+        template = db.query(EmailTemplate).options(
+            joinedload(EmailTemplate.template_files)
+        ).filter(
             EmailTemplate.id == template_id,
             EmailTemplate.user_email == user_email
         ).first()
@@ -164,6 +170,9 @@ async def update_email_template(
         db.commit()
         db.refresh(db_template)
         
+        # Reload template_files relationship after commit
+        db.refresh(db_template, ['template_files'])
+        
         return EmailTemplateResponse(
             id=db_template.id,
             user_email=db_template.user_email,
@@ -217,7 +226,10 @@ async def get_template_by_type(user_email: str, template_type: int, db: Session 
     Returns None if no template found
     """
     try:
-        template = db.query(EmailTemplate).filter(
+        # Use joinedload to eagerly load template_files relationship
+        template = db.query(EmailTemplate).options(
+            joinedload(EmailTemplate.template_files)
+        ).filter(
             EmailTemplate.user_email == user_email,
             EmailTemplate.template_type == template_type
         ).order_by(EmailTemplate.created_at.desc()).first()
@@ -236,3 +248,48 @@ async def get_template_by_type(user_email: str, template_type: int, db: Session 
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching template: {str(e)}")
+
+
+@router.get("/{user_email}/by-types", response_model=List[EmailTemplateResponse])
+async def get_templates_by_types(
+    user_email: str, 
+    template_types: str = Query(..., alias="template_types", description="Comma-separated template types (e.g., '0,1,2,3')"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get the most recent templates of multiple types for a user in a single query
+    This is more efficient than making multiple separate API calls
+    Returns a list of templates (may be empty or have fewer items than requested types)
+    """
+    try:
+        # Parse template types from comma-separated string
+        type_list = [int(t.strip()) for t in template_types.split(',') if t.strip().isdigit()]
+        
+        if not type_list:
+            return []
+        
+        # Use joinedload to eagerly load template_files relationship
+        # Get the most recent template for each type
+        templates = []
+        for template_type in type_list:
+            template = db.query(EmailTemplate).options(
+                joinedload(EmailTemplate.template_files)
+            ).filter(
+                EmailTemplate.user_email == user_email,
+                EmailTemplate.template_type == template_type
+            ).order_by(EmailTemplate.created_at.desc()).first()
+            
+            if template:
+                templates.append(EmailTemplateResponse(
+                    id=template.id,
+                    user_email=template.user_email,
+                    template_body=template.template_body,
+                    template_type=template.template_type,
+                    subject=template.subject,
+                    created_at=template.created_at,
+                    file_paths=[tf.file_path for tf in template.template_files]
+                ))
+        
+        return templates
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching templates: {str(e)}")

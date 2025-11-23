@@ -3,6 +3,7 @@ from functools import partial
 from PyQt6 import QtCore
 import webbrowser
 import pandas as pd
+import requests
 from PyQt6 import QtWidgets, uic ,QtGui
 from PyQt6.QtCharts import QPieSeries, QChartView, QChart, QBarSeries, QBarSet
 from PyQt6.QtCore import Qt, QEvent
@@ -372,8 +373,19 @@ class EmailEditor(QtCore.QObject):
     def _load_templates_from_db(self):
         """Load email templates from database and populate UI
         Optimized to use a single batch API call instead of 4 separate calls
+        Silently fails if API is not available - app continues to work in offline mode
         """
         if not self.api_client:
+            # API not available - app will work in offline mode
+            return
+        
+        # Check if API is actually available before trying to load
+        try:
+            if not self.api_client.is_available():
+                # API server is not running - silently continue
+                return
+        except Exception:
+            # Connection check failed - silently continue
             return
         
         # Template type mapping: 0=main, 1=first_reminder, 2=second_reminder, 3=third_reminder
@@ -429,20 +441,14 @@ class EmailEditor(QtCore.QObject):
                         
                         # Update attachment summary
                         self._update_attachment_summary(editor)
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            # API server is not available - silently continue (offline mode)
+            # Don't print error messages for connection issues - this is expected if server isn't running
+            pass
         except Exception as e:
-            print(f"Error loading templates from database: {e}")
-            # Fallback: try individual calls if batch fails
-            for template_key, (template_type, editor) in template_mapping.items():
-                try:
-                    template = self.api_client.get_template_by_type(self.user_email, template_type)
-                    if template:
-                        self.template_ids[template_key] = template.get("id")
-                        if editor:
-                            editor.setHtml(template.get("template_body", ""))
-                        if template_key == "main_template" and self.txt_main_subject:
-                            self.txt_main_subject.setText(template.get("subject", ""))
-                except Exception as e2:
-                    print(f"Error loading template {template_key}: {e2}")
+            # Other errors - log but don't crash
+            print(f"Info: Could not load templates from database: {type(e).__name__}")
+            # Don't try fallback if connection failed - it will just fail again
 
     # ====================================================
     # =============== Bold / Italic ======================

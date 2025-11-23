@@ -1,0 +1,119 @@
+graph TB
+    %% Main Application
+    MainApp[FastAPI Application<br/>api/main.py]
+    
+    %% Routers
+    subgraph Routers["API Routers Layer"]
+        DashboardRouter[Dashboard Router<br/>api/routes/dashboard.py]
+        EmailTemplateRouter[Email Templates Router<br/>api/routes/email_templates.py]
+        SendingRulesRouter[Sending Rules Router<br/>api/routes/sending_rules.py]
+        EmailQueueRouter[Email Queue Router<br/>api/routes/email_queue.py]
+    end
+    
+    %% Schemas
+    subgraph Schemas["Schema Layer (Pydantic)"]
+        DashboardStats[DashboardStats]
+        EmailTemplateCreate[EmailTemplateCreate]
+        EmailTemplateResponse[EmailTemplateResponse]
+        EmailTemplateUpdate[EmailTemplateUpdate]
+        SendingRulesCreate[SendingRulesCreate]
+        SendingRulesResponse[SendingRulesResponse]
+        SendingRulesUpdate[SendingRulesUpdate]
+        EmailQueueCreate[EmailQueueCreate]
+        EmailQueueResponse[EmailQueueResponse]
+        SendLogResponse[SendLogResponse]
+        MessageResponse[MessageResponse]
+    end
+    
+    %% Database Layer
+    subgraph Database["Database Layer"]
+        DatabaseModule[Database Module<br/>api/database.py]
+        GetDB[get_db Dependency]
+        SessionFactory[SessionLocal Factory]
+        Engine[SQLAlchemy Engine]
+    end
+    
+    %% ORM Models
+    subgraph ORMModels["ORM Models (SQLAlchemy)"]
+        UserModel[User]
+        EmailTemplateModel[EmailTemplate]
+        SendingRulesModel[SendingRules]
+        EmailQueueModel[EmailQueue]
+        SendLogModel[SendLog]
+        ProfessorContactModel[ProfessorContact]
+        OtherModels[25+ Other Models...]
+    end
+    
+    %% Database
+    PostgreSQL[(PostgreSQL Database)]
+    
+    %% Main App to Routers
+    MainApp --> DashboardRouter
+    MainApp --> EmailTemplateRouter
+    MainApp --> SendingRulesRouter
+    MainApp --> EmailQueueRouter
+    
+    %% Routers to Schemas
+    DashboardRouter --> DashboardStats
+    EmailTemplateRouter --> EmailTemplateCreate
+    EmailTemplateRouter --> EmailTemplateResponse
+    EmailTemplateRouter --> EmailTemplateUpdate
+    EmailTemplateRouter --> MessageResponse
+    SendingRulesRouter --> SendingRulesCreate
+    SendingRulesRouter --> SendingRulesResponse
+    SendingRulesRouter --> SendingRulesUpdate
+    EmailQueueRouter --> EmailQueueCreate
+    EmailQueueRouter --> EmailQueueResponse
+    EmailQueueRouter --> SendLogResponse
+    EmailQueueRouter --> MessageResponse
+    
+    %% Routers to Database
+    DashboardRouter --> GetDB
+    EmailTemplateRouter --> GetDB
+    SendingRulesRouter --> GetDB
+    EmailQueueRouter --> GetDB
+    
+    %% Database Layer Connections
+    GetDB --> SessionFactory
+    SessionFactory --> Engine
+    Engine --> PostgreSQL
+    
+    %% Routers to ORM Models
+    DashboardRouter --> SendLogModel
+    DashboardRouter --> ProfessorContactModel
+    DashboardRouter --> EmailQueueModel
+    EmailTemplateRouter --> EmailTemplateModel
+    SendingRulesRouter --> SendingRulesModel
+    EmailQueueRouter --> EmailQueueModel
+    EmailQueueRouter --> SendLogModel
+    
+    %% ORM Models to Database
+    EmailTemplateModel --> UserModel
+    SendingRulesModel --> UserModel
+    EmailQueueModel --> UserModel
+    EmailQueueModel --> EmailTemplateModel
+    SendLogModel --> UserModel
+    SendLogModel --> EmailTemplateModel
+    ProfessorContactModel --> UserModel
+    OtherModels --> UserModel
+    
+    %% ORM Models to PostgreSQL
+    UserModel --> PostgreSQL
+    EmailTemplateModel --> PostgreSQL
+    SendingRulesModel --> PostgreSQL
+    EmailQueueModel --> PostgreSQL
+    SendLogModel --> PostgreSQL
+    ProfessorContactModel --> PostgreSQL
+    OtherModels --> PostgreSQL
+    
+    %% Styling
+    classDef routerStyle fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    classDef schemaStyle fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef modelStyle fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    classDef dbStyle fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    
+    class DashboardRouter,EmailTemplateRouter,SendingRulesRouter,EmailQueueRouter routerStyle
+    class DashboardStats,EmailTemplateCreate,EmailTemplateResponse,EmailTemplateUpdate,SendingRulesCreate,SendingRulesResponse,SendingRulesUpdate,EmailQueueCreate,EmailQueueResponse,SendLogResponse,MessageResponse schemaStyle
+    class UserModel,EmailTemplateModel,SendingRulesModel,EmailQueueModel,SendLogModel,ProfessorContactModel,OtherModels modelStyle
+    class DatabaseModule,GetDB,SessionFactory,Engine,PostgreSQL dbStyle
+

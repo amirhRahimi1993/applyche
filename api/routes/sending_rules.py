@@ -1,144 +1,114 @@
 """
-Sending Rules API routes
+Sending Rules API routes using SQLAlchemy ORM
 """
-from fastapi import APIRouter, HTTPException
-from api.database import db
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.orm import Session
+from api.database import get_db
 from api.models import (
     SendingRulesCreate,
     SendingRulesResponse,
     SendingRulesUpdate,
     MessageResponse
 )
+from api.db_models import SendingRules
 
 router = APIRouter(prefix="/api/sending-rules", tags=["sending-rules"])
 
 
 @router.post("/", response_model=SendingRulesResponse)
-async def create_sending_rules(rules: SendingRulesCreate):
+async def create_sending_rules(rules: SendingRulesCreate, db: Session = Depends(get_db)):
     """
     Create or update sending rules for a user
     """
     try:
-        with db.get_cursor() as cur:
-            # Check if rules exist
-            cur.execute("""
-                SELECT id FROM sending_rules WHERE user_email = %s
-            """, (rules.user_email,))
-            existing = cur.fetchone()
-            
-            if existing:
-                # Update existing
-                cur.execute("""
-                    UPDATE sending_rules
-                    SET main_mail_number = %s,
-                        reminder_one = %s,
-                        reminder_two = %s,
-                        reminder_three = %s,
-                        local_professor_time = %s,
-                        max_email_per_university = %s,
-                        send_working_day_only = %s,
-                        period_between_reminders = %s,
-                        delay_sending_mail = %s,
-                        start_time_send = %s
-                    WHERE user_email = %s
-                    RETURNING id, user_email, main_mail_number, reminder_one, reminder_two,
-                             reminder_three, local_professor_time, max_email_per_university,
-                             send_working_day_only, period_between_reminders, delay_sending_mail,
-                             start_time_send, created_at
-                """, (
-                    rules.main_mail_number,
-                    rules.reminder_one,
-                    rules.reminder_two,
-                    rules.reminder_three,
-                    rules.local_professor_time,
-                    rules.max_email_per_university,
-                    rules.send_working_day_only,
-                    rules.period_between_reminders,
-                    rules.delay_sending_mail,
-                    rules.start_time_send,
-                    rules.user_email
-                ))
-            else:
-                # Insert new
-                cur.execute("""
-                    INSERT INTO sending_rules (
-                        user_email, main_mail_number, reminder_one, reminder_two,
-                        reminder_three, local_professor_time, max_email_per_university,
-                        send_working_day_only, period_between_reminders, delay_sending_mail,
-                        start_time_send
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id, user_email, main_mail_number, reminder_one, reminder_two,
-                             reminder_three, local_professor_time, max_email_per_university,
-                             send_working_day_only, period_between_reminders, delay_sending_mail,
-                             start_time_send, created_at
-                """, (
-                    rules.user_email,
-                    rules.main_mail_number,
-                    rules.reminder_one,
-                    rules.reminder_two,
-                    rules.reminder_three,
-                    rules.local_professor_time,
-                    rules.max_email_per_university,
-                    rules.send_working_day_only,
-                    rules.period_between_reminders,
-                    rules.delay_sending_mail,
-                    rules.start_time_send
-                ))
-            
-            result = cur.fetchone()
-            return SendingRulesResponse(
-                id=result[0],
-                user_email=result[1],
-                main_mail_number=result[2],
-                reminder_one=result[3],
-                reminder_two=result[4],
-                reminder_three=result[5],
-                local_professor_time=result[6],
-                max_email_per_university=result[7],
-                send_working_day_only=result[8],
-                period_between_reminders=result[9],
-                delay_sending_mail=result[10],
-                start_time_send=str(result[11]) if result[11] else None,
-                created_at=result[12]
+        # Check if rules exist
+        existing = db.query(SendingRules).filter(
+            SendingRules.user_email == rules.user_email
+        ).first()
+        
+        if existing:
+            # Update existing
+            existing.main_mail_number = rules.main_mail_number
+            existing.reminder_one = rules.reminder_one
+            existing.reminder_two = rules.reminder_two
+            existing.reminder_three = rules.reminder_three
+            existing.local_professor_time = rules.local_professor_time
+            existing.max_email_per_university = rules.max_email_per_university
+            existing.send_working_day_only = rules.send_working_day_only
+            existing.period_between_reminders = rules.period_between_reminders
+            existing.delay_sending_mail = rules.delay_sending_mail
+            existing.start_time_send = rules.start_time_send
+            db.commit()
+            db.refresh(existing)
+            result = existing
+        else:
+            # Insert new
+            db_rules = SendingRules(
+                user_email=rules.user_email,
+                main_mail_number=rules.main_mail_number,
+                reminder_one=rules.reminder_one,
+                reminder_two=rules.reminder_two,
+                reminder_three=rules.reminder_three,
+                local_professor_time=rules.local_professor_time,
+                max_email_per_university=rules.max_email_per_university,
+                send_working_day_only=rules.send_working_day_only,
+                period_between_reminders=rules.period_between_reminders,
+                delay_sending_mail=rules.delay_sending_mail,
+                start_time_send=rules.start_time_send
             )
+            db.add(db_rules)
+            db.commit()
+            db.refresh(db_rules)
+            result = db_rules
+        
+        return SendingRulesResponse(
+            id=result.id,
+            user_email=result.user_email,
+            main_mail_number=result.main_mail_number,
+            reminder_one=result.reminder_one,
+            reminder_two=result.reminder_two,
+            reminder_three=result.reminder_three,
+            local_professor_time=result.local_professor_time,
+            max_email_per_university=result.max_email_per_university,
+            send_working_day_only=result.send_working_day_only,
+            period_between_reminders=result.period_between_reminders,
+            delay_sending_mail=result.delay_sending_mail,
+            start_time_send=str(result.start_time_send) if result.start_time_send else None,
+            created_at=result.created_at
+        )
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=f"Error creating/updating sending rules: {str(e)}")
 
 
 @router.get("/{user_email}", response_model=SendingRulesResponse)
-async def get_sending_rules(user_email: str):
+async def get_sending_rules(user_email: str, db: Session = Depends(get_db)):
     """
     Get sending rules for a user
     """
     try:
-        with db.get_cursor() as cur:
-            cur.execute("""
-                SELECT id, user_email, main_mail_number, reminder_one, reminder_two,
-                       reminder_three, local_professor_time, max_email_per_university,
-                       send_working_day_only, period_between_reminders, delay_sending_mail,
-                       start_time_send, created_at
-                FROM sending_rules
-                WHERE user_email = %s
-            """, (user_email,))
-            result = cur.fetchone()
-            if not result:
-                raise HTTPException(status_code=404, detail="Sending rules not found")
-            return SendingRulesResponse(
-                id=result[0],
-                user_email=result[1],
-                main_mail_number=result[2],
-                reminder_one=result[3],
-                reminder_two=result[4],
-                reminder_three=result[5],
-                local_professor_time=result[6],
-                max_email_per_university=result[7],
-                send_working_day_only=result[8],
-                period_between_reminders=result[9],
-                delay_sending_mail=result[10],
-                start_time_send=str(result[11]) if result[11] else None,
-                created_at=result[12]
-            )
+        rules = db.query(SendingRules).filter(
+            SendingRules.user_email == user_email
+        ).first()
+        
+        if not rules:
+            raise HTTPException(status_code=404, detail="Sending rules not found")
+        
+        return SendingRulesResponse(
+            id=rules.id,
+            user_email=rules.user_email,
+            main_mail_number=rules.main_mail_number,
+            reminder_one=rules.reminder_one,
+            reminder_two=rules.reminder_two,
+            reminder_three=rules.reminder_three,
+            local_professor_time=rules.local_professor_time,
+            max_email_per_university=rules.max_email_per_university,
+            send_working_day_only=rules.send_working_day_only,
+            period_between_reminders=rules.period_between_reminders,
+            delay_sending_mail=rules.delay_sending_mail,
+            start_time_send=str(rules.start_time_send) if rules.start_time_send else None,
+            created_at=rules.created_at
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -146,81 +116,60 @@ async def get_sending_rules(user_email: str):
 
 
 @router.patch("/{user_email}", response_model=SendingRulesResponse)
-async def update_sending_rules(user_email: str, rules: SendingRulesUpdate):
+async def update_sending_rules(user_email: str, rules: SendingRulesUpdate, db: Session = Depends(get_db)):
     """
     Partially update sending rules for a user
     """
     try:
-        updates = []
-        values = []
+        db_rules = db.query(SendingRules).filter(
+            SendingRules.user_email == user_email
+        ).first()
         
+        if not db_rules:
+            raise HTTPException(status_code=404, detail="Sending rules not found")
+        
+        # Update only provided fields
         if rules.main_mail_number is not None:
-            updates.append("main_mail_number = %s")
-            values.append(rules.main_mail_number)
+            db_rules.main_mail_number = rules.main_mail_number
         if rules.reminder_one is not None:
-            updates.append("reminder_one = %s")
-            values.append(rules.reminder_one)
+            db_rules.reminder_one = rules.reminder_one
         if rules.reminder_two is not None:
-            updates.append("reminder_two = %s")
-            values.append(rules.reminder_two)
+            db_rules.reminder_two = rules.reminder_two
         if rules.reminder_three is not None:
-            updates.append("reminder_three = %s")
-            values.append(rules.reminder_three)
+            db_rules.reminder_three = rules.reminder_three
         if rules.local_professor_time is not None:
-            updates.append("local_professor_time = %s")
-            values.append(rules.local_professor_time)
+            db_rules.local_professor_time = rules.local_professor_time
         if rules.max_email_per_university is not None:
-            updates.append("max_email_per_university = %s")
-            values.append(rules.max_email_per_university)
+            db_rules.max_email_per_university = rules.max_email_per_university
         if rules.send_working_day_only is not None:
-            updates.append("send_working_day_only = %s")
-            values.append(rules.send_working_day_only)
+            db_rules.send_working_day_only = rules.send_working_day_only
         if rules.period_between_reminders is not None:
-            updates.append("period_between_reminders = %s")
-            values.append(rules.period_between_reminders)
+            db_rules.period_between_reminders = rules.period_between_reminders
         if rules.delay_sending_mail is not None:
-            updates.append("delay_sending_mail = %s")
-            values.append(rules.delay_sending_mail)
+            db_rules.delay_sending_mail = rules.delay_sending_mail
         if rules.start_time_send is not None:
-            updates.append("start_time_send = %s")
-            values.append(rules.start_time_send)
+            db_rules.start_time_send = rules.start_time_send
         
-        if not updates:
-            raise HTTPException(status_code=400, detail="No fields to update")
+        db.commit()
+        db.refresh(db_rules)
         
-        values.append(user_email)
-        
-        with db.get_cursor() as cur:
-            cur.execute(f"""
-                UPDATE sending_rules
-                SET {', '.join(updates)}
-                WHERE user_email = %s
-                RETURNING id, user_email, main_mail_number, reminder_one, reminder_two,
-                         reminder_three, local_professor_time, max_email_per_university,
-                         send_working_day_only, period_between_reminders, delay_sending_mail,
-                         start_time_send, created_at
-            """, values)
-            result = cur.fetchone()
-            if not result:
-                raise HTTPException(status_code=404, detail="Sending rules not found")
-            return SendingRulesResponse(
-                id=result[0],
-                user_email=result[1],
-                main_mail_number=result[2],
-                reminder_one=result[3],
-                reminder_two=result[4],
-                reminder_three=result[5],
-                local_professor_time=result[6],
-                max_email_per_university=result[7],
-                send_working_day_only=result[8],
-                period_between_reminders=result[9],
-                delay_sending_mail=result[10],
-                start_time_send=str(result[11]) if result[11] else None,
-                created_at=result[12]
-            )
+        return SendingRulesResponse(
+            id=db_rules.id,
+            user_email=db_rules.user_email,
+            main_mail_number=db_rules.main_mail_number,
+            reminder_one=db_rules.reminder_one,
+            reminder_two=db_rules.reminder_two,
+            reminder_three=db_rules.reminder_three,
+            local_professor_time=db_rules.local_professor_time,
+            max_email_per_university=db_rules.max_email_per_university,
+            send_working_day_only=db_rules.send_working_day_only,
+            period_between_reminders=db_rules.period_between_reminders,
+            delay_sending_mail=db_rules.delay_sending_mail,
+            start_time_send=str(db_rules.start_time_send) if db_rules.start_time_send else None,
+            created_at=db_rules.created_at
+        )
     except HTTPException:
         raise
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=f"Error updating sending rules: {str(e)}")
-
-

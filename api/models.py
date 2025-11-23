@@ -34,6 +34,14 @@ class EmailTemplateResponse(BaseModel):
     template_type: int
     subject: Optional[str]
     created_at: datetime
+    file_paths: Optional[List[str]] = []  # List of file paths from template_files
+
+
+class TemplateFileResponse(BaseModel):
+    """Template file response"""
+    id: int
+    email_template_id: int
+    file_path: str
 
 
 class EmailTemplateUpdate(BaseModel):

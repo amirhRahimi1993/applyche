@@ -4,7 +4,7 @@ Email Queue and Send Log API routes using SQLAlchemy ORM
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from datetime import datetime
+from datetime import datetime, timezone
 from api.database import get_db
 from api.models import (
     EmailQueueCreate,
@@ -111,7 +111,7 @@ async def update_queue_status(
             raise HTTPException(status_code=404, detail="Queue item not found")
         
         queue_item.status = status
-        queue_item.last_attempt_at = datetime.now()
+        queue_item.last_attempt_at = datetime.now(timezone.utc)
         db.commit()
         
         return MessageResponse(message="Status updated successfully")

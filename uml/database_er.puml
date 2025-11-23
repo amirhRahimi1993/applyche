@@ -1,0 +1,329 @@
+@startuml Database ER Diagram
+!define PRIMARY_KEY(x) <b><color:red>x</color></b>
+!define FOREIGN_KEY(x) <color:blue>x</color>
+
+entity "users" as users {
+  PRIMARY_KEY(email) : CITEXT
+  --
+  password_hash : TEXT
+  password_salt : TEXT
+  created_at : TIMESTAMP
+  last_login : TIMESTAMP
+  failed_login_attempts : SMALLINT
+  is_active : BOOLEAN
+  display_name : TEXT
+  profile_image : TEXT
+  personal_website : TEXT
+  backup_email : CITEXT
+}
+
+entity "user_education_information" as edu {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(user_email) : CITEXT
+  FOREIGN_KEY(university_id) : INT
+  --
+  major : TEXT
+  university_department : TEXT
+  education_level : STRING
+  grade : NUMERIC
+  ielts : NUMERIC
+  gre : NUMERIC
+  google_scholar_link : TEXT
+  CV_path : TEXT
+  SOP_path : TEXT
+  created_at : TIMESTAMP
+}
+
+entity "universities" as univ {
+  PRIMARY_KEY(id) : INT
+  --
+  name : TEXT
+  country : CHAR(2)
+  website : TEXT
+}
+
+entity "departments" as dept {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(university_id) : INT
+  --
+  university_deparment_name : TEXT
+}
+
+entity "professors" as prof {
+  PRIMARY_KEY(email) : CITEXT
+  FOREIGN_KEY(university_id) : INT
+  FOREIGN_KEY(department_id) : INT
+  --
+  name : TEXT
+  major : TEXT
+  professor_img : TEXT
+  meta_data : JSONB
+}
+
+entity "professor_research_interests" as interests {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(professor_email) : CITEXT
+  --
+  interest : TEXT
+}
+
+entity "open_positions" as positions {
+  PRIMARY_KEY(id) : BIGINT
+  FOREIGN_KEY(university_id) : INT
+  FOREIGN_KEY(department_id) : INT
+  FOREIGN_KEY(supervisor_email) : CITEXT
+  --
+  position_title : TEXT
+  fund : TEXT
+  min_ielts : NUMERIC
+  min_gre : NUMERIC
+  contact_email : CITEXT
+  requirements : JSONB
+  deadline : DATE
+  description : TEXT
+  more_info_link : TEXT
+  graduate_level : SMALLINT
+  meta_data : JSONB
+  country : TEXT
+}
+
+entity "professor_contact" as contact {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(user_email) : CITEXT
+  FOREIGN_KEY(professor_email) : CITEXT
+  FOREIGN_KEY(position_id) : BIGINT
+  --
+  last_contact_time : TIMESTAMP
+  next_contact_time : TIMESTAMP
+  contact_status : SMALLINT
+  is_active : BOOLEAN
+  attempts : SMALLINT
+}
+
+entity "saved_positions" as saved {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(user_email) : CITEXT
+  FOREIGN_KEY(position_id) : BIGINT
+  --
+  status : SMALLINT
+  notes : TEXT
+  created_at : TIMESTAMP
+}
+
+entity "email_templates" as templates {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(user_email) : CITEXT
+  --
+  template_body : TEXT
+  template_type : SMALLINT
+  subject : TEXT
+  created_at : TIMESTAMP
+}
+
+entity "template_files" as tfiles {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(email_template_id) : INT
+  --
+  file_path : TEXT
+}
+
+entity "sending_rules" as rules {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(user_email) : CITEXT
+  --
+  main_mail_number : SMALLINT
+  reminder_one : SMALLINT
+  reminder_two : SMALLINT
+  reminder_three : SMALLINT
+  local_professor_time : BOOLEAN
+  max_email_per_university : SMALLINT
+  send_working_day_only : BOOLEAN
+  period_between_reminders : SMALLINT
+  delay_sending_mail : SMALLINT
+  start_time_send : TIME
+  created_at : TIMESTAMP
+}
+
+entity "email_queue" as queue {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(user_email) : CITEXT
+  FOREIGN_KEY(template_id) : INT
+  --
+  to_email : CITEXT
+  subject : TEXT
+  body : TEXT
+  scheduled_at : TIMESTAMP
+  status : SMALLINT
+  retry_count : SMALLINT
+  created_at : TIMESTAMP
+}
+
+entity "send_log" as log {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(user_email) : CITEXT
+  --
+  sent_to : CITEXT
+  sent_time : TIMESTAMP
+  subject : TEXT
+  send_type : SMALLINT
+  delivery_status : SMALLINT
+}
+
+entity "subscriptions" as subs {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(user_email) : CITEXT
+  --
+  plan_name : VARCHAR
+  started_at : TIMESTAMP
+  expires_at : TIMESTAMP
+  status : SMALLINT
+}
+
+entity "subscription_history" as subhist {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(user_email) : CITEXT
+  --
+  plan_name : VARCHAR
+  started_at : TIMESTAMP
+  ended_at : TIMESTAMP
+  payment_reference : TEXT
+  status : SMALLINT
+  created_at : TIMESTAMP
+}
+
+entity "professor_review" as review {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(user_email) : CITEXT
+  FOREIGN_KEY(professor_email) : CITEXT
+  --
+  review_text : TEXT
+  rating : NUMERIC
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+entity "comment" as comment {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(review_id) : INT
+  FOREIGN_KEY(commenter_email) : CITEXT
+  --
+  comment_text : TEXT
+  created_at : TIMESTAMP
+}
+
+entity "review_vote" as rvote {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(review_id) : INT
+  FOREIGN_KEY(voter_email) : CITEXT
+  --
+  vote_type : SMALLINT
+  created_at : TIMESTAMP
+}
+
+entity "comment_vote" as cvote {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(comment_id) : INT
+  FOREIGN_KEY(voter_email) : CITEXT
+  --
+  vote_type : SMALLINT
+  created_at : TIMESTAMP
+}
+
+entity "chat_log" as chat {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(user_email) : CITEXT
+  --
+  user_message : TEXT
+  bot_response : TEXT
+  created_at : TIMESTAMP
+}
+
+entity "api_token" as token {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(user_email) : CITEXT
+  --
+  token_hash : TEXT
+  expires_at : TIMESTAMP
+  created_at : TIMESTAMP
+}
+
+entity "metric" as metric {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(user_email) : CITEXT
+  --
+  metric_name : TEXT
+  metric_value : NUMERIC
+  recorded_at : TIMESTAMP
+}
+
+entity "professor_list" as plist {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(user_email) : CITEXT
+  --
+  file_path : TEXT
+  uploaded_at : TIMESTAMP
+}
+
+entity "email_property" as eprop {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(user_email) : CITEXT
+  --
+  property_key : TEXT
+  property_value : TEXT
+  updated_at : TIMESTAMP
+}
+
+entity "file" as file {
+  PRIMARY_KEY(id) : INT
+  FOREIGN_KEY(owner_email) : CITEXT
+  --
+  file_path : TEXT
+  file_type : TEXT
+  file_size : BIGINT
+  uploaded_at : TIMESTAMP
+}
+
+' Relationships
+users ||--o{ edu : "has"
+users ||--o{ subs : "has"
+users ||--o{ subhist : "has"
+users ||--o{ templates : "creates"
+users ||--o{ rules : "configures"
+users ||--o{ queue : "queues"
+users ||--o{ log : "logs"
+users ||--o{ contact : "tracks"
+users ||--o{ saved : "saves"
+users ||--o{ review : "writes"
+users ||--o{ comment : "writes"
+users ||--o{ chat : "generates"
+users ||--o{ token : "uses"
+users ||--o{ metric : "tracks"
+users ||--o{ plist : "uploads"
+users ||--o{ eprop : "configures"
+users ||--o{ file : "owns"
+
+univ ||--o{ dept : "contains"
+univ ||--o{ edu : "referenced_by"
+univ ||--o{ prof : "hosts"
+univ ||--o{ positions : "offers"
+
+dept ||--o{ prof : "contains"
+dept ||--o{ positions : "offers"
+
+prof ||--o{ interests : "has"
+prof ||--o{ positions : "supervises"
+prof ||--o{ contact : "contacted_by"
+prof ||--o{ review : "reviewed"
+
+templates ||--o{ tfiles : "contains"
+templates ||--o{ queue : "used_in"
+
+positions ||--o{ contact : "referenced_in"
+positions ||--o{ saved : "saved_in"
+
+review ||--o{ comment : "has"
+review ||--o{ rvote : "receives"
+comment ||--o{ cvote : "receives"
+
+@enduml
+

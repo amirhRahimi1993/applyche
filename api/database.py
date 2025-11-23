@@ -5,7 +5,7 @@ import os
 from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import QueuePool
 from dotenv import load_dotenv
 from contextlib import contextmanager
 
@@ -23,12 +23,16 @@ DB_PORT = 5433
 # Using psycopg (psycopg3) driver
 DATABASE_URL = f"postgresql+psycopg://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-# Create SQLAlchemy engine
+# Create SQLAlchemy engine with connection pooling for better performance
+# QueuePool is the default and provides connection reuse
 engine = create_engine(
     DATABASE_URL,
-    poolclass=NullPool,
+    poolclass=QueuePool,
+    pool_size=10,  # Number of connections to maintain in the pool
+    max_overflow=20,  # Maximum number of connections beyond pool_size
+    pool_pre_ping=True,  # Verify connections before using them
+    pool_recycle=3600,  # Recycle connections after 1 hour
     echo=False,  # Set to True for SQL query logging
-    future=True
 )
 
 # Create session factory

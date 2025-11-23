@@ -1,0 +1,68 @@
+@startuml API Architecture
+!define ROUTER_COLOR #E1F5FF
+!define SCHEMA_COLOR #FFF4E1
+!define DB_COLOR #E8F5E9
+
+package "FastAPI Application" #FFE0E0 {
+  [main.py\nFastAPI App] as Main
+  [CORS Middleware] as CORS
+}
+
+package "API Routers" ROUTER_COLOR {
+  [dashboard.py\nDashboard Stats] as DashRouter
+  [email_templates.py\nTemplate CRUD] as TempRouter
+  [sending_rules.py\nSending Config] as RulesRouter
+  [email_queue.py\nQueue Management] as QueueRouter
+}
+
+package "Pydantic Schemas" SCHEMA_COLOR {
+  [DashboardStats] as DashSchema
+  [EmailTemplateCreate] as TempCreate
+  [EmailTemplateResponse] as TempResponse
+  [EmailTemplateUpdate] as TempUpdate
+  [SendingRulesCreate] as RulesCreate
+  [SendingRulesResponse] as RulesResponse
+  [EmailQueueCreate] as QueueCreate
+  [EmailQueueResponse] as QueueResponse
+  [SendLogResponse] as LogResponse
+}
+
+package "Database Layer" DB_COLOR {
+  [database.py\nSession Management] as DB
+  [db_models.py\nSQLAlchemy ORM] as ORM
+  database PostgreSQL {
+    [users]
+    [email_templates]
+    [sending_rules]
+    [email_queue]
+    [send_log]
+    [professor_contact]
+  }
+}
+
+Main --> CORS
+Main --> DashRouter
+Main --> TempRouter
+Main --> RulesRouter
+Main --> QueueRouter
+
+DashRouter --> DashSchema
+TempRouter --> TempCreate
+TempRouter --> TempResponse
+TempRouter --> TempUpdate
+RulesRouter --> RulesCreate
+RulesRouter --> RulesResponse
+QueueRouter --> QueueCreate
+QueueRouter --> QueueResponse
+QueueRouter --> LogResponse
+
+DashRouter --> DB
+TempRouter --> DB
+RulesRouter --> DB
+QueueRouter --> DB
+
+DB --> ORM
+ORM --> PostgreSQL
+
+@enduml
+

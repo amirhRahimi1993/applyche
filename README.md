@@ -4,6 +4,8 @@
 
 This project provides a RESTful API backend for the ApplyChe email management system. The API connects the PyQt6 desktop application (`main_ui.py`) to a PostgreSQL database using FastAPI and SQLAlchemy ORM.
 
+**Python Version**: Compatible with Python 3.9+ (optimized for Python 3.12)
+
 ## What Was Created
 
 ### 1. FastAPI Application Structure
@@ -321,17 +323,20 @@ class EmailTemplateCreate(BaseModel):
 
 ### 1. Install Dependencies
 
+**Python 3.12 Recommended** (Python 3.9+ supported)
+
 ```bash
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
 **Key Dependencies**:
-- `fastapi==0.104.1` - Web framework
-- `uvicorn[standard]==0.24.0` - ASGI server
-- `sqlalchemy==2.0.23` - ORM
-- `psycopg[binary]==3.1.18` - PostgreSQL driver
-- `pydantic==2.5.0` - Schema validation
-- `python-dotenv==1.0.0` - Environment variables
+- `fastapi>=0.115.0` - Web framework (Python 3.12 compatible)
+- `uvicorn[standard]>=0.32.0` - ASGI server
+- `sqlalchemy>=2.0.36` - ORM (using DeclarativeBase for Python 3.12)
+- `psycopg[binary]>=3.2.0` - PostgreSQL driver
+- `pydantic>=2.9.0` - Schema validation
+- `python-dotenv>=1.0.1` - Environment variables
 
 ### 2. Configure Database
 
@@ -542,6 +547,30 @@ For issues or questions:
 1. Check API documentation at `/docs`
 2. Review `DEPENDENCY_GRAPH.md` for architecture details
 3. See `example_integration.py` for usage examples
+
+## Python 3.12 Compatibility
+
+This codebase has been updated for Python 3.12 compatibility:
+
+- ✅ Updated SQLAlchemy to use `DeclarativeBase` (replaces deprecated `declarative_base()`)
+- ✅ Removed deprecated `future=True` parameter from SQLAlchemy engine
+- ✅ Updated all dependencies to Python 3.12 compatible versions
+- ✅ Cleaned repository of Python 3.9 cache files
+- ✅ Added `.gitignore` to prevent cache file commits
+
+See `PYTHON_3.12_MIGRATION.md` for detailed migration information.
+
+## Repository Cleanup
+
+The repository has been cleaned:
+- ✅ Removed all `__pycache__` directories
+- ✅ Removed all `.pyc` files
+- ✅ Added `.gitignore` to prevent future cache commits
+
+To clean the repository manually:
+```bash
+python clean_repo.py
+```
 
 ## License
 

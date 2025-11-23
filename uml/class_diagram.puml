@@ -1,0 +1,203 @@
+@startuml Class Diagram - Existing Code
+skinparam classAttributeIconSize 0
+
+package "View Layer" {
+  class MyWindow {
+    -widget_content
+    -stacked_content
+    -email_Temp: EmailEditor
+    -professorList: Professor_lists
+    -email_prep: Prepare_send_mail
+    -statics: Statics
+    -dashboard: Dashboard
+    +__init__()
+    +hamburger_toggle()
+    +__btn_page_home_arise()
+    +__btn_page_email_template()
+    +btn_page_prepare_send_email()
+    +_setup_resizable_layout()
+    +_configure_widget_resize()
+    +_finalize_resize_configuration()
+  }
+
+  class Dashboard {
+    -widget
+    -model: Dashboard_model
+    +__init__(widget)
+    +report()
+    +chart_email_answered_by_professor()
+    +chart_email_send_remain()
+    +chart_emaill_send_by_reminder()
+  }
+
+  class EmailEditor {
+    -widget
+    -stacked_widget
+    -middle_info_pass
+    -uploaded_files: dict
+    -saved_templates: dict
+    -text_edits: list
+    +__init__(widget, middle_info_pass)
+    +save_template_data(template_key)
+    +toggle_bold(editor, button)
+    +toggle_italic(editor, button)
+    +insert_link(editor)
+    +insert_file_attachment(editor)
+  }
+
+  class Prepare_send_mail {
+    -widget
+    -middle_info_pass
+    -bus: EventBus
+    -coordinator: Coordinator
+    +__init__(widget, middle_info_pass)
+    +prepare_email()
+    +start_sending()
+    +stop_sending()
+  }
+
+  class Professor_lists {
+    -widget
+    -middle_info_pass
+    -controller: ProfessorsController
+    -tbl_professors_list
+    +__init__(widget, middle_info_pass)
+    +load_professors()
+    +display_professors()
+  }
+
+  class Statics {
+    -widget
+    -chart_widget
+    -chart_layout
+    +__init__(widget)
+    +generate_charts()
+  }
+}
+
+package "Controller Layer" {
+  class DashboardController {
+    -secret_key
+    +__init__()
+    +fetch_data_from_model()
+    +give_data_to_view()
+    +give_data_to_model()
+    +fetch_data_from_view()
+  }
+
+  class ProfessorsController {
+    -path
+    -header
+    -nan_columns
+    -df: DataFrame
+    +__init__(path)
+    +send_professor_info()
+  }
+
+  class SendMailController {
+    -bus: EventBus
+    -_sending: bool
+    -_thread: Thread
+    -info: dict
+    -is_premium: bool
+    -EMAIL_PROVIDERS: dict
+    +__init__(bus)
+    +start_sending(info)
+    +stop_sending()
+    -_send_loop()
+  }
+
+  class CheckPremium {
+    +__init__(email, password)
+    +check_premium(): bool
+  }
+}
+
+package "Model Layer" {
+  class Dashboard_model {
+    -db_name
+    -username
+    -password
+    -host
+    -column_storage: dict
+    -conn: Connection
+    +__init__()
+    -__connect()
+    +analysis_email(key)
+    +return_not_send_mail()
+  }
+
+  class EmailTemplateModel {
+    -connection: connect_to_db
+    -cursor
+    +__init__()
+    +upload_text(text)
+    +fetch_text()
+  }
+
+  class connect_to_db {
+    -db_name
+    -username
+    -password
+    -host
+    -column_storage: dict
+    -conn: Connection
+    +__init__()
+    +return_username_password()
+    +connect(): Connection
+  }
+}
+
+package "Middleware" {
+  class EventBus {
+    -_subscribers: defaultdict
+    +__init__()
+    +subscribe(event_name, callback)
+    +publish(event_name, data)
+  }
+
+  class Coordinator {
+    -bus: EventBus
+    -view
+    -controller: SendMailController
+    +__init__(bus)
+    +set_view(view)
+    +start_sending(info)
+    +stop_sending()
+    -_on_log_received(message)
+  }
+
+  class middle_info_pass {
+    -store_data_variable: dict
+    +__init__()
+    +store_data(key, value)
+    +get_data(key)
+  }
+}
+
+' Relationships
+MyWindow --> Dashboard
+MyWindow --> EmailEditor
+MyWindow --> Prepare_send_mail
+MyWindow --> Professor_lists
+MyWindow --> Statics
+
+Dashboard --> Dashboard_model
+Dashboard_model --> connect_to_db
+
+EmailEditor --> middle_info_pass
+Prepare_send_mail --> middle_info_pass
+Prepare_send_mail --> Coordinator
+Prepare_send_mail --> EventBus
+
+Professor_lists --> ProfessorsController
+
+Coordinator --> SendMailController
+Coordinator --> EventBus
+SendMailController --> EventBus
+SendMailController --> CheckPremium
+
+EmailTemplateModel --> connect_to_db
+
+@enduml
+

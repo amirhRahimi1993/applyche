@@ -519,3 +519,4 @@ api/services/
 
 5. **Error Handling**: HTTP exceptions are raised in routers, could be centralized in a service layer.
 
+

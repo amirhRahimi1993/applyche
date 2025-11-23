@@ -116,3 +116,4 @@ All database indexes are preserved in the ORM models using `Index()` in `__table
 3. Add hybrid properties for computed fields
 4. Consider adding model-level business logic methods
 
+

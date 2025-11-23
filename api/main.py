@@ -42,9 +42,10 @@ async def root():
 async def health_check():
     """Health check endpoint"""
     try:
-        from api.database import db
-        with db.get_cursor() as cur:
-            cur.execute("SELECT 1")
+        from api.database import engine
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}

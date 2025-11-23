@@ -13,6 +13,7 @@ from controller.professors_controller import ProfessorsController
 from middle_wares.coordinator_sending_mails import Coordinator
 from events.event_bus import EventBus
 from middle_wares.middle_info_pass import middle_info_pass
+from api_client import ApplyCheAPIClient
 import resources
 class MyWindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -40,7 +41,10 @@ class MyWindow(QtWidgets.QMainWindow):
         if self.stacked_content.count() > 0:
             self.stacked_content.setCurrentIndex(0)
 
-        self.email_Temp = EmailEditor(self.page_email_template,self.middle_info_pass)
+        # TODO: Get user_email from authentication/session
+        # For now, using a placeholder - replace with actual user email
+        user_email = "user@example.com"  # Replace with actual user email from session
+        self.email_Temp = EmailEditor(self.page_email_template, self.middle_info_pass, user_email)
         self.professorList = Professor_lists(self.page_professor_list,self.middle_info_pass)
         self.email_prep = Prepare_send_mail(self.page_prepare_send_email,self.middle_info_pass)
 
@@ -198,15 +202,24 @@ class Dashboard:
         self.__draw_the_pie_chart(pieChart_sendvsnotsend, series, title)
 
 class EmailEditor(QtCore.QObject):
-    def __init__(self, widget, middle_info_pass):
+    def __init__(self, widget, middle_info_pass, user_email: str = "user@example.com"):
         super().__init__(widget)
         self.widget = widget
         self.stacked_widget = self.widget.findChild(QtWidgets.QStackedWidget, "stacked_email_template")
         self.middle_info_pass = middle_info_pass
+        self.user_email = user_email
+        
+        # Initialize API client
+        try:
+            self.api_client = ApplyCheAPIClient("http://localhost:8000")
+        except Exception as e:
+            print(f"Warning: Could not connect to API: {e}")
+            self.api_client = None
 
         # Store uploaded files per editor
         self.uploaded_files = {}
         self.saved_templates = {}
+        self.template_ids = {}  # Store template IDs for updates
         self.save_btns= {
             "main_template":self.stacked_widget.findChild(QtWidgets.QPushButton, "btn_save_main_temp"),
             "first_reminder": self.stacked_widget.findChild(QtWidgets.QPushButton, "btn_save_first_temp"),
@@ -344,6 +357,65 @@ class EmailEditor(QtCore.QObject):
                 ubtn.clicked.connect(partial(self.insert_file_attachment, editor))
 
             editor.cursorPositionChanged.connect(partial(self.update_button_states, editor))
+        
+        # Load templates from database after UI is set up
+        self._load_templates_from_db()
+
+    # ====================================================
+    # =============== Load Templates from DB =============
+    # ====================================================
+    def _load_templates_from_db(self):
+        """Load email templates from database and populate UI"""
+        if not self.api_client:
+            return
+        
+        # Template type mapping: 0=main, 1=first_reminder, 2=second_reminder, 3=third_reminder
+        template_mapping = {
+            "main_template": (0, self.txt_main_mail),
+            "first_reminder": (1, self.txt_first_reminder),
+            "second_reminder": (2, self.txt_second_reminder),
+            "third_reminder": (3, self.txt_third_reminder)
+        }
+        
+        for template_key, (template_type, editor) in template_mapping.items():
+            try:
+                template = self.api_client.get_template_by_type(self.user_email, template_type)
+                if template:
+                    # Store template ID for updates
+                    self.template_ids[template_key] = template.get("id")
+                    
+                    # Load HTML content into editor
+                    if editor:
+                        editor.setHtml(template.get("template_body", ""))
+                    
+                    # Load subject for main template
+                    if template_key == "main_template" and self.txt_main_subject:
+                        self.txt_main_subject.setText(template.get("subject", ""))
+                    
+                    # Load file paths
+                    file_paths = template.get("file_paths", [])
+                    if file_paths and editor:
+                        # Clear existing files
+                        self.uploaded_files[editor] = []
+                        
+                        # Add files from database
+                        for file_path in file_paths:
+                            if os.path.exists(file_path):
+                                file_name = os.path.basename(file_path)
+                                file_size = os.path.getsize(file_path)
+                                self.uploaded_files[editor].append(file_path)
+                                
+                                # Create attachment chip
+                                container, chip_area, _ = self.attachment_areas.get(editor, (None, None, None))
+                                if container and chip_area:
+                                    chip = self._create_attachment_chip(file_name, file_path, file_size, editor)
+                                    chip_area.layout().addWidget(chip)
+                                    container.show()
+                        
+                        # Update attachment summary
+                        self._update_attachment_summary(editor)
+            except Exception as e:
+                print(f"Error loading template {template_key}: {e}")
 
     # ====================================================
     # =============== Bold / Italic ======================
@@ -370,32 +442,92 @@ class EmailEditor(QtCore.QObject):
         editor.mergeCurrentCharFormat(fmt)
         editor.setFocus()
 
-    def save_template_data(self,template_key):
-
-        editor_map= {
-            "main_template":self.txt_main_mail,
-            "first_reminder":self.txt_first_reminder,
-            "second_reminder":self.txt_second_reminder,
-            "third_reminder":self.txt_third_reminder
+    def save_template_data(self, template_key):
+        """Save template to database via API"""
+        editor_map = {
+            "main_template": (0, self.txt_main_mail),
+            "first_reminder": (1, self.txt_first_reminder),
+            "second_reminder": (2, self.txt_second_reminder),
+            "third_reminder": (3, self.txt_third_reminder)
         }
-        editor = editor_map.get(template_key)
+        
+        template_info = editor_map.get(template_key)
+        if not template_info:
+            QtWidgets.QMessageBox.warning(None, "Warning", f"Unknown template key: {template_key}")
+            return
+        
+        template_type, editor = template_info
         if not editor:
-            QtWidgets.QMessageBox.warning(None,"Warning",f"{template_key} is empty are sure you want to contine?")
+            QtWidgets.QMessageBox.warning(None, "Warning", f"Editor not found for {template_key}")
+            return
+        
         html_content = editor.toHtml()
-        file_paths= self.uploaded_files.get(editor,[])
-        self.saved_templates[template_key]={
+        file_paths = self.uploaded_files.get(editor, [])
+        
+        # Get subject for main template
+        subject = None
+        if template_key == "main_template" and self.txt_main_subject:
+            subject = self.txt_main_subject.text()
+            self.middle_info_pass.store_data("txt_main_subject", subject)
+        
+        # Save to local storage (for backward compatibility)
+        self.saved_templates[template_key] = {
             "html": html_content,
             "attachments": file_paths.copy()
         }
-        if template_key == "main_template":
-            self.middle_info_pass.store_data("txt_main_subject",self.txt_main_subject.text())
-        self.middle_info_pass.store_data(template_key,self.saved_templates[template_key])
-        QtWidgets.QMessageBox.information( editor,
-        "Template Saved",
-        f"✅ {template_key.replace('_', ' ').title()} has been saved successfully.\n\n"
-        f"Attachments: {len(file_paths)} file(s)",
-    )
-
+        self.middle_info_pass.store_data(template_key, self.saved_templates[template_key])
+        
+        # Save to database via API
+        if self.api_client:
+            try:
+                template_id = self.template_ids.get(template_key)
+                
+                if template_id:
+                    # Update existing template
+                    self.api_client.update_email_template(
+                        template_id=template_id,
+                        user_email=self.user_email,
+                        template_body=html_content,
+                        template_type=template_type,
+                        subject=subject,
+                        file_paths=file_paths
+                    )
+                else:
+                    # Create new template
+                    result = self.api_client.create_email_template(
+                        user_email=self.user_email,
+                        template_body=html_content,
+                        template_type=template_type,
+                        subject=subject,
+                        file_paths=file_paths
+                    )
+                    # Store the new template ID
+                    self.template_ids[template_key] = result.get("id")
+                
+                QtWidgets.QMessageBox.information(
+                    editor,
+                    "Template Saved",
+                    f"✅ {template_key.replace('_', ' ').title()} has been saved successfully to database.\n\n"
+                    f"Attachments: {len(file_paths)} file(s)",
+                )
+            except Exception as e:
+                QtWidgets.QMessageBox.warning(
+                    editor,
+                    "Save Warning",
+                    f"Template saved locally but failed to save to database:\n{str(e)}\n\n"
+                    f"Please check API connection."
+                )
+                print(f"Error saving template to API: {e}")
+        else:
+            # No API client, just save locally
+            QtWidgets.QMessageBox.information(
+                editor,
+                "Template Saved",
+                f"✅ {template_key.replace('_', ' ').title()} has been saved locally.\n\n"
+                f"Attachments: {len(file_paths)} file(s)\n\n"
+                f"Note: API not connected, template not saved to database.",
+            )
+        
         print(f"Saved {template_key}: {self.saved_templates[template_key]}")
 
     # ====================================================

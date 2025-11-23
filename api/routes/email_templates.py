@@ -10,16 +10,20 @@ from api.models import (
     EmailTemplateUpdate,
     MessageResponse
 )
-from api.db_models import EmailTemplate
-from typing import List
+from api.db_models import EmailTemplate, TemplateFile
+from typing import List, Optional
 
 router = APIRouter(prefix="/api/email-templates", tags=["email-templates"])
 
 
 @router.post("/", response_model=EmailTemplateResponse)
-async def create_email_template(template: EmailTemplateCreate, db: Session = Depends(get_db)):
+async def create_email_template(
+    template: EmailTemplateCreate, 
+    file_paths: Optional[List[str]] = Query(default=None),
+    db: Session = Depends(get_db)
+):
     """
-    Create a new email template
+    Create a new email template with optional file paths
     """
     try:
         db_template = EmailTemplate(
@@ -29,8 +33,22 @@ async def create_email_template(template: EmailTemplateCreate, db: Session = Dep
             subject=template.subject
         )
         db.add(db_template)
+        db.flush()  # Get the ID without committing
+        
+        # Add template files if provided
+        if file_paths:
+            for file_path in file_paths:
+                template_file = TemplateFile(
+                    email_template_id=db_template.id,
+                    file_path=file_path
+                )
+                db.add(template_file)
+        
         db.commit()
         db.refresh(db_template)
+        
+        # Get file paths
+        file_paths_list = [tf.file_path for tf in db_template.template_files]
         
         return EmailTemplateResponse(
             id=db_template.id,
@@ -38,7 +56,8 @@ async def create_email_template(template: EmailTemplateCreate, db: Session = Dep
             template_body=db_template.template_body,
             template_type=db_template.template_type,
             subject=db_template.subject,
-            created_at=db_template.created_at
+            created_at=db_template.created_at,
+            file_paths=file_paths_list
         )
     except Exception as e:
         db.rollback()
@@ -62,7 +81,8 @@ async def get_email_templates(user_email: str, db: Session = Depends(get_db)):
                 template_body=t.template_body,
                 template_type=t.template_type,
                 subject=t.subject,
-                created_at=t.created_at
+                created_at=t.created_at,
+                file_paths=[tf.file_path for tf in t.template_files]
             )
             for t in templates
         ]
@@ -90,7 +110,8 @@ async def get_email_template(user_email: str, template_id: int, db: Session = De
             template_body=template.template_body,
             template_type=template.template_type,
             subject=template.subject,
-            created_at=template.created_at
+            created_at=template.created_at,
+            file_paths=[tf.file_path for tf in template.template_files]
         )
     except HTTPException:
         raise
@@ -103,6 +124,7 @@ async def update_email_template(
     template_id: int, 
     template: EmailTemplateUpdate, 
     user_email: str = Query(...),
+    file_paths: List[str] = Query(default=None),
     db: Session = Depends(get_db)
 ):
     """
@@ -125,6 +147,20 @@ async def update_email_template(
         if template.subject is not None:
             db_template.subject = template.subject
         
+        # Update file paths if provided
+        if file_paths is not None:
+            # Delete existing files
+            db.query(TemplateFile).filter(
+                TemplateFile.email_template_id == template_id
+            ).delete()
+            # Add new files
+            for file_path in file_paths:
+                template_file = TemplateFile(
+                    email_template_id=template_id,
+                    file_path=file_path
+                )
+                db.add(template_file)
+        
         db.commit()
         db.refresh(db_template)
         
@@ -134,7 +170,8 @@ async def update_email_template(
             template_body=db_template.template_body,
             template_type=db_template.template_type,
             subject=db_template.subject,
-            created_at=db_template.created_at
+            created_at=db_template.created_at,
+            file_paths=[tf.file_path for tf in db_template.template_files]
         )
     except HTTPException:
         raise
@@ -170,3 +207,32 @@ async def delete_email_template(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error deleting template: {str(e)}")
+
+
+@router.get("/{user_email}/by-type/{template_type}", response_model=Optional[EmailTemplateResponse])
+async def get_template_by_type(user_email: str, template_type: int, db: Session = Depends(get_db)):
+    """
+    Get the most recent template of a specific type for a user
+    Useful for loading main_template (0), first_reminder (1), second_reminder (2), third_reminder (3)
+    Returns None if no template found
+    """
+    try:
+        template = db.query(EmailTemplate).filter(
+            EmailTemplate.user_email == user_email,
+            EmailTemplate.template_type == template_type
+        ).order_by(EmailTemplate.created_at.desc()).first()
+        
+        if not template:
+            return None
+        
+        return EmailTemplateResponse(
+            id=template.id,
+            user_email=template.user_email,
+            template_body=template.template_body,
+            template_type=template.template_type,
+            subject=template.subject,
+            created_at=template.created_at,
+            file_paths=[tf.file_path for tf in template.template_files]
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching template: {str(e)}")

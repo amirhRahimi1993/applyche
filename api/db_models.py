@@ -7,12 +7,13 @@ from sqlalchemy import (
     Index, JSON
 )
 from sqlalchemy.dialects.postgresql import CITEXT, JSONB
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 
 # Note: Database enums are defined in PostgreSQL, but we use SmallInteger/String

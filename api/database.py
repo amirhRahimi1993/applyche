@@ -24,11 +24,11 @@ DB_PORT = 5433
 DATABASE_URL = f"postgresql+psycopg://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # Create SQLAlchemy engine
+# Note: future=True is not needed in SQLAlchemy 2.0+
 engine = create_engine(
     DATABASE_URL,
     poolclass=NullPool,
     echo=False,  # Set to True for SQL query logging
-    future=True
 )
 
 # Create session factory

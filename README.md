@@ -414,6 +414,46 @@ Or using uvicorn directly:
 uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+### Sample ORM Insert
+
+The project now uses SQLAlchemy everywhere. You can insert records directly via the ORM:
+
+```python
+from datetime import datetime, timezone
+
+from api.database import SessionLocal
+from api.db_models import EmailTemplate, User
+
+
+def create_template():
+    session = SessionLocal()
+    try:
+        user_email = "user@example.com"
+
+        user = session.get(User, user_email)
+        if not user:
+            user = User(email=user_email, password_hash="", is_active=True)
+            session.add(user)
+            session.flush()
+
+        template = EmailTemplate(
+            user_email=user_email,
+            subject="Hello from ORM",
+            template_body="<p>This template was created via SQLAlchemy ORM.</p>",
+            template_type=0,
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(template)
+        session.commit()
+        session.refresh(template)
+        print(f"Created template #{template.id}")
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+```
+
 ### 4. Access API Documentation
 
 - **Swagger UI**: http://localhost:8000/docs

@@ -1,14 +1,29 @@
 import os
+import sys
 from functools import partial
+from typing import Optional
+
 from PyQt6 import QtCore
 import webbrowser
 import pandas as pd
 import requests
-from PyQt6 import QtWidgets, uic ,QtGui
+from PyQt6 import QtWidgets, uic, QtGui
 from PyQt6.QtCharts import QPieSeries, QChartView, QChart, QBarSeries, QBarSet
 from PyQt6.QtCore import Qt, QEvent
-from PyQt6.QtGui import QPainter, QPen, QTextCharFormat, QFont, QIcon
-from PyQt6.QtWidgets import QVBoxLayout, QSizePolicy, QMessageBox, QFileDialog, QTableWidgetItem, QDialog
+from PyQt6.QtGui import QPainter, QPen, QTextCharFormat, QFont, QIcon, QGuiApplication
+from PyQt6.QtWidgets import (
+    QVBoxLayout,
+    QSizePolicy,
+    QMessageBox,
+    QFileDialog,
+    QTableWidgetItem,
+    QDialog,
+    QLineEdit,
+    QHBoxLayout,
+    QProgressBar,
+    QFrame,
+    QPushButton,
+)
 
 from controller.professors_controller import ProfessorsController
 from middle_wares.coordinator_sending_mails import Coordinator
@@ -16,17 +31,214 @@ from events.event_bus import EventBus
 from middle_wares.middle_info_pass import middle_info_pass
 from api_client import ApplyCheAPIClient
 import resources
-class MyWindow(QtWidgets.QMainWindow):
+
+
+class LoadingOverlay(QtWidgets.QWidget):
+    """Minimal loading screen to avoid blank UI while widgets hydrate."""
+
     def __init__(self):
-        super(MyWindow, self).__init__()
+        super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        container = QFrame()
+        container.setObjectName("loadingContainer")
+        container.setStyleSheet(
+            "QFrame#loadingContainer {background-color: #0F172A; border-radius: 18px;}"
+        )
+
+        inner = QVBoxLayout(container)
+        inner.setContentsMargins(32, 28, 32, 28)
+        inner.setSpacing(12)
+
+        title = QtWidgets.QLabel("Loading ApplyChe…")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("color: #F8FAFC; font-size: 18px; font-weight: 600;")
+
+        subtitle = QtWidgets.QLabel("Preparing dashboard and syncing templates")
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        subtitle.setStyleSheet("color: #94A3B8; font-size: 12px;")
+
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 0)
+        self.progress.setTextVisible(False)
+        self.progress.setStyleSheet(
+            """
+            QProgressBar {
+                border-radius: 8px;
+                background-color: #1E293B;
+                height: 10px;
+            }
+            QProgressBar::chunk {
+                border-radius: 8px;
+                background-color: #38BDF8;
+            }
+            """
+        )
+
+        inner.addWidget(title)
+        inner.addWidget(subtitle)
+        inner.addWidget(self.progress)
+
+        layout.addWidget(container)
+        self.resize(420, 200)
+        self._center_on_screen()
+
+    def _center_on_screen(self):
+        screen = QGuiApplication.primaryScreen()
+        if not screen:
+            return
+        geometry = screen.availableGeometry()
+        self.move(
+            geometry.center().x() - self.width() // 2,
+            geometry.center().y() - self.height() // 2,
+        )
+
+
+class LoginDialog(QtWidgets.QDialog):
+    """Modern login dialog that authenticates via FastAPI."""
+
+    def __init__(self, api_client: ApplyCheAPIClient, parent=None):
+        super().__init__(parent)
+        self.api_client = api_client
+        self.user_email: Optional[str] = None
+        self.display_name: Optional[str] = None
+
+        self.setWindowTitle("Sign in to ApplyChe")
+        self.setFixedSize(420, 360)
+        self.setModal(True)
+        self.setWindowIcon(QIcon("../images/applyche.jpg"))
+        self.setStyleSheet("background-color: #0F172A; color: #E2E8F0;")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(32, 32, 32, 32)
+        layout.setSpacing(16)
+
+        title = QtWidgets.QLabel("Welcome back 👋")
+        title.setStyleSheet("font-size: 22px; font-weight: 600; color: #F8FAFC;")
+
+        subtitle = QtWidgets.QLabel("Sign in with your ApplyChe account")
+        subtitle.setStyleSheet("color: #94A3B8;")
+
+        self.email_input = QLineEdit()
+        self.email_input.setPlaceholderText("Email address")
+        self.email_input.setClearButtonEnabled(True)
+        self.email_input.setStyleSheet(self._input_style())
+
+        self.password_input = QLineEdit()
+        self.password_input.setPlaceholderText("Password")
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_input.setStyleSheet(self._input_style())
+
+        self.status_label = QtWidgets.QLabel("")
+        self.status_label.setStyleSheet("color: #F87171; min-height: 18px;")
+
+        self.login_button = QPushButton("Sign in")
+        self.login_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.login_button.setStyleSheet(self._primary_button_style())
+        self.login_button.clicked.connect(self._attempt_login)
+
+        secondary_row = QHBoxLayout()
+        secondary_row.addWidget(self.status_label)
+        secondary_row.addStretch()
+
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+        layout.addSpacing(10)
+        layout.addWidget(self.email_input)
+        layout.addWidget(self.password_input)
+        layout.addLayout(secondary_row)
+        layout.addWidget(self.login_button)
+
+        helper = QtWidgets.QLabel("Need an account? Seed demo data or contact admin.")
+        helper.setStyleSheet("color: #64748B; font-size: 12px;")
+        helper.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addStretch()
+        layout.addWidget(helper)
+
+        self.password_input.returnPressed.connect(self._attempt_login)
+
+    def _input_style(self) -> str:
+        return (
+            "background-color: #1E293B; border: 1px solid #334155; "
+            "border-radius: 10px; padding: 10px 14px; color: #E2E8F0;"
+        )
+
+    def _primary_button_style(self) -> str:
+        return (
+            "QPushButton {background-color: #2563EB; border: none; border-radius: 10px;"
+            "padding: 12px 16px; font-weight: 600; color: #F8FAFC;}"
+            "QPushButton:hover {background-color: #1D4ED8;}"
+            "QPushButton:disabled {background-color: #1E40AF; color: #94A3B8;}"
+        )
+
+    def _attempt_login(self):
+        email = self.email_input.text().strip()
+        password = self.password_input.text()
+
+        if not email or not password:
+            self._show_status("Email and password are required.")
+            return
+
+        self._set_loading(True)
+        try:
+            response = self.api_client.login(email=email, password=password)
+            self.user_email = response.get("email", email)
+            self.display_name = response.get("display_name") or self.user_email
+            self.accept()
+        except requests.exceptions.HTTPError as exc:
+            message = "Invalid email or password."
+            if exc.response is not None:
+                try:
+                    detail = exc.response.json()
+                    if isinstance(detail, dict) and detail.get("detail"):
+                        message = detail["detail"]
+                except ValueError:
+                    pass
+            self._show_status(message)
+        except requests.exceptions.RequestException:
+            self._show_status("Unable to reach the API server. Please try again.")
+        finally:
+            self._set_loading(False)
+
+    def _set_loading(self, is_loading: bool):
+        self.login_button.setDisabled(is_loading)
+        if is_loading:
+            QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        else:
+            QtWidgets.QApplication.restoreOverrideCursor()
+
+    def _show_status(self, message: str):
+        self.status_label.setText(message)
+
+
+class MyWindow(QtWidgets.QMainWindow):
+    def __init__(
+        self,
+        user_email: str,
+        display_name: Optional[str] = None,
+        api_client: Optional[ApplyCheAPIClient] = None,
+    ):
+        super().__init__()
         self.middle_info_pass = middle_info_pass()
-        uic.loadUi( "../applyche_main_ui.ui", self)
+        self.user_email = user_email
+        self.display_name = display_name or user_email
+        self.api_client = api_client or ApplyCheAPIClient("http://localhost:8000", timeout=5)
+        uic.loadUi("../applyche_main_ui.ui", self)
         self.setWindowTitle("ApplyChe")
 
         # Set the window icon
         self.setWindowIcon(QIcon("../images/applyche.jpg"))  # Use .ico, .png, etc.
 
-        self.show()
+        self.brand_label = self.findChild(QtWidgets.QLabel, "txt_applyche")
+        if self.brand_label:
+            self.brand_label.setText(f"Welcome, {self.display_name}")
+        if self.statusBar():
+            self.statusBar().setStyleSheet("color: #CBD5F5; font-weight: 500;")
+            self.statusBar().showMessage(f"Signed in as {self.user_email}")
 
         self.page_title_label = self.findChild(QtWidgets.QLabel, "lbl_page_title")
         self._nav_buttons = [
@@ -57,15 +269,21 @@ class MyWindow(QtWidgets.QMainWindow):
         if self.stacked_content.count() > 0:
             self.stacked_content.setCurrentIndex(0)
 
-        # TODO: Get user_email from authentication/session
-        # For now, using a placeholder - replace with actual user email
-        user_email = "user@example.com"  # Replace with actual user email from session
-        self.email_Temp = EmailEditor(self.page_email_template, self.middle_info_pass, user_email)
-        self.professorList = Professor_lists(self.page_professor_list,self.middle_info_pass)
-        self.email_prep = Prepare_send_mail(self.page_prepare_send_email,self.middle_info_pass)
+        self.email_Temp = EmailEditor(
+            self.page_email_template,
+            self.middle_info_pass,
+            user_email=self.user_email,
+            api_client=self.api_client,
+        )
+        self.professorList = Professor_lists(self.page_professor_list, self.middle_info_pass)
+        self.email_prep = Prepare_send_mail(self.page_prepare_send_email, self.middle_info_pass)
 
         self.statics = Statics(self.page_statics)
-        self.dashboard = Dashboard(self.page_Dashboard)
+        self.dashboard = Dashboard(
+            self.page_Dashboard,
+            api_client=self.api_client,
+            user_email=self.user_email,
+        )
         self.dashboard.report()
         self.dashboard.chart_email_answered_by_professor()
         self.dashboard.chart_email_send_remain()
@@ -129,7 +347,15 @@ class MyWindow(QtWidgets.QMainWindow):
         self.stacked_content.setCurrentWidget(self.page_help)
 
     def btn_page_logout(self):
-        pass
+        reply = QMessageBox.question(
+            self,
+            "Sign out",
+            "Are you sure you want to sign out of ApplyChe?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            QtWidgets.QApplication.instance().quit()
 
     def _set_active_nav(self, button, title, page_widget=None):
         if page_widget is not None and self.stacked_content.currentWidget() is not page_widget:
@@ -180,6 +406,48 @@ class MyWindow(QtWidgets.QMainWindow):
             #btn_notification {
                 background-color: transparent;
             }
+            #widget_menu QPushButton {
+                color: #CBD5F5;
+                background-color: transparent;
+                border: none;
+                border-radius: 14px;
+                padding: 12px 20px;
+                text-align: left;
+                font-weight: 500;
+            }
+            #widget_menu QPushButton:hover {
+                background-color: rgba(37, 99, 235, 0.15);
+            }
+            #widget_menu QPushButton[active="true"] {
+                background-color: #2563EB;
+                color: #F8FAFC;
+            }
+            QPushButton {
+                background-color: #1D4ED8;
+                color: #F8FAFC;
+                border-radius: 12px;
+                padding: 10px 18px;
+            }
+            QPushButton:disabled {
+                background-color: #1E3A8A;
+                color: #94A3B8;
+            }
+            QTextEdit {
+                background-color: #0F172A;
+                color: #F1F5F9;
+                border: 1px solid #1E293B;
+                border-radius: 14px;
+                padding: 12px;
+            }
+            QStackedWidget {
+                background-color: #020617;
+                border-radius: 18px;
+            }
+            QLabel#lbl_page_title {
+                color: #F8FAFC;
+                font-size: 22px;
+                font-weight: 600;
+            }
         """)
 
     def _assign_nav_icons(self):
@@ -202,20 +470,46 @@ class MyWindow(QtWidgets.QMainWindow):
 
 
 class Dashboard:
-    def __init__(self, widget):
+    def __init__(
+        self,
+        widget,
+        api_client: Optional[ApplyCheAPIClient] = None,
+        user_email: str = "",
+    ):
         self.widget = widget
+        self.api_client = api_client
+        self.user_email = user_email
+        self.latest_stats = {
+            "email_you_send": 0,
+            "first_reminder_send": 0,
+            "second_reminder_send": 0,
+            "third_reminder_send": 0,
+            "number_of_email_professor_answered": 0,
+            "emails_remaining": 0,
+        }
         self.lbl_report = self.widget.findChild(QtWidgets.QLabel, "lbl_report")
         self.report()
 
     def __fetch_report_from_controller(self):
-        info = {
-            "email_you_send": 80,
-            "first_reminder_send": 60,
-            "second_reminder_send": 40,
-            "third_reminder_send": 20,
-            "number_of_email_professor_answered": 10
-        }
-        return info
+        fallback = self.latest_stats.copy()
+        if self.api_client and self.user_email:
+            try:
+                stats = self.api_client.get_dashboard_stats(self.user_email)
+                return {
+                    "email_you_send": stats.get("email_you_send", 0),
+                    "first_reminder_send": stats.get("first_reminder_send", 0),
+                    "second_reminder_send": stats.get("second_reminder_send", 0),
+                    "third_reminder_send": stats.get("third_reminder_send", 0),
+                    "number_of_email_professor_answered": stats.get(
+                        "number_of_email_professor_answered", 0
+                    ),
+                    "emails_remaining": stats.get("emails_remaining", 0),
+                }
+            except requests.exceptions.RequestException:
+                print("Info: Dashboard API not reachable, showing offline data.")
+            except Exception as exc:
+                print(f"Info: Failed to fetch dashboard stats: {exc}")
+        return fallback
 
     def print_tree(self, widget, indent=0):
         print("  " * indent + f"{widget.objectName()} [{type(widget).__name__}]")
@@ -224,6 +518,7 @@ class Dashboard:
 
     def report(self):
         info = self.__fetch_report_from_controller()
+        self.latest_stats = info
         widget_report = self.widget.findChild(QtWidgets.QWidget, "widget_report")
         self.lbl_report = widget_report.findChild(QtWidgets.QLabel, "lbl_send_emails")
         self.lbl_report.setText(fr"The number of emails send by applyche: {info['email_you_send']}")
@@ -265,8 +560,18 @@ class Dashboard:
 
     def chart_email_answered_by_professor(self):
         series = QPieSeries()
-        series.append("SendMail", 800)
-        series.append("Answered", 30)
+        total_sent = sum(
+            [
+                self.latest_stats.get("email_you_send", 0),
+                self.latest_stats.get("first_reminder_send", 0),
+                self.latest_stats.get("second_reminder_send", 0),
+                self.latest_stats.get("third_reminder_send", 0),
+            ]
+        )
+        answered = self.latest_stats.get("number_of_email_professor_answered", 0)
+        unanswered = max(total_sent - answered, 0)
+        series.append("Answered", answered or 1)
+        series.append("Awaiting Reply", unanswered or 1)
         main_widget = self.widget.findChild(QtWidgets.QWidget, "widget_main")
         pieChart_professor = main_widget.findChild(QtWidgets.QWidget, "widget_professor_answered")
         self.__draw_the_pie_chart(pieChart_professor, series, "Email send VS Email answered")
@@ -274,8 +579,17 @@ class Dashboard:
     def chart_email_send_remain(self):
         title = "Email send VS Email Remain"
         series = QPieSeries()
-        series.append("Send Emails", 800)
-        series.append("Remain Emails", 1200)
+        total_sent = sum(
+            [
+                self.latest_stats.get("email_you_send", 0),
+                self.latest_stats.get("first_reminder_send", 0),
+                self.latest_stats.get("second_reminder_send", 0),
+                self.latest_stats.get("third_reminder_send", 0),
+            ]
+        )
+        remaining = self.latest_stats.get("emails_remaining", 0)
+        series.append("Sent Emails", total_sent or 1)
+        series.append("Remaining in Queue", remaining or 1)
         main_widget = self.widget.findChild(QtWidgets.QWidget, "widget_main")
         pieChart_sendvsnotsend = main_widget.findChild(QtWidgets.QWidget, "widget_send_email_remainEmail")
         self.__draw_the_pie_chart(pieChart_sendvsnotsend, series, title)
@@ -283,16 +597,22 @@ class Dashboard:
     def chart_emaill_send_by_reminder(self):
         title = "All Emails sends"
         series = QPieSeries()
-        series.append("Main Emails", 800)
-        series.append("Remainder1", 600)
-        series.append("Remainder2", 400)
-        series.append("Remainder3", 0)
+        series.append("Main Emails", self.latest_stats.get("email_you_send", 0) or 1)
+        series.append("Reminder 1", self.latest_stats.get("first_reminder_send", 0))
+        series.append("Reminder 2", self.latest_stats.get("second_reminder_send", 0))
+        series.append("Reminder 3", self.latest_stats.get("third_reminder_send", 0))
         main_widget = self.widget.findChild(QtWidgets.QWidget, "widget_main")
         pieChart_sendvsnotsend = main_widget.findChild(QtWidgets.QWidget, "widget_sended_mails")
         self.__draw_the_pie_chart(pieChart_sendvsnotsend, series, title)
 
 class EmailEditor(QtCore.QObject):
-    def __init__(self, widget, middle_info_pass, user_email: str = "user@example.com"):
+    def __init__(
+        self,
+        widget,
+        middle_info_pass,
+        user_email: str = "user@example.com",
+        api_client: Optional[ApplyCheAPIClient] = None,
+    ):
         super().__init__(widget)
         self.widget = widget
         self.stacked_widget = self.widget.findChild(QtWidgets.QStackedWidget, "stacked_email_template")
@@ -300,19 +620,20 @@ class EmailEditor(QtCore.QObject):
         self.user_email = user_email
         
         # Initialize API client (always create it, check availability when needed)
-        try:
-            self.api_client = ApplyCheAPIClient("http://localhost:8000", timeout=3)
-            # Check if API is available (don't fail if it's not)
-            if not self.api_client.is_available():
-                print("Info: FastAPI server is not running. Templates will be saved locally only.")
-                # Keep the client - it will be checked again when saving
-        except Exception as e:
-            print(f"Info: API client initialization failed: {e}")
-            # Still create the client - it might work later when server starts
+        self.api_client = api_client
+        if self.api_client is None:
             try:
                 self.api_client = ApplyCheAPIClient("http://localhost:8000", timeout=3)
-            except:
+            except Exception as exc:
+                print(f"Info: API client initialization failed: {exc}")
                 self.api_client = None
+
+        if self.api_client:
+            try:
+                if not self.api_client.is_available():
+                    print("Info: FastAPI server is not running. Templates will be saved locally only.")
+            except Exception:
+                pass
 
         # Store uploaded files per editor
         self.uploaded_files = {}
@@ -1377,11 +1698,38 @@ class Search_Professors(QtWidgets.QWidget):
     def __load_professors_data(self):
         pass
 
+def launch_main_window(app: QtWidgets.QApplication) -> Optional[QtWidgets.QMainWindow]:
+    api_client = ApplyCheAPIClient("http://localhost:8000", timeout=5)
+    login_dialog = LoginDialog(api_client)
+    result = login_dialog.exec()
+    if result != QDialog.DialogCode.Accepted or not login_dialog.user_email:
+        return None
 
-if __name__ == '__main__':
-    app = QtWidgets.QApplication([])
-    window = MyWindow()
+    loading = LoadingOverlay()
+    loading.show()
+    QtWidgets.QApplication.processEvents()
+    try:
+        window = MyWindow(
+            user_email=login_dialog.user_email,
+            display_name=login_dialog.display_name,
+            api_client=api_client,
+        )
+    finally:
+        loading.close()
+
     window.show()
-    app.exec()
+    return window
+
+
+def main():
+    app = QtWidgets.QApplication(sys.argv)
+    window = launch_main_window(app)
+    if not window:
+        sys.exit(0)
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()
 
 

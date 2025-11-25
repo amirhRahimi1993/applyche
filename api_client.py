@@ -37,27 +37,40 @@ class ApplyCheAPIClient:
     
     def _post(self, endpoint: str, data: Dict) -> Dict:
         """Make POST request"""
-        response = self.session.post(f"{self.base_url}{endpoint}", json=data, timeout=self.timeout)
+        response = self.session.post(
+            f"{self.base_url}{endpoint}", json=data, timeout=self.timeout
+        )
         response.raise_for_status()
         return response.json()
     
     def _put(self, endpoint: str, data: Dict) -> Dict:
         """Make PUT request"""
-        response = self.session.put(f"{self.base_url}{endpoint}", json=data, timeout=self.timeout)
+        response = self.session.put(
+            f"{self.base_url}{endpoint}", json=data, timeout=self.timeout
+        )
         response.raise_for_status()
         return response.json()
     
     def _patch(self, endpoint: str, data: Dict) -> Dict:
         """Make PATCH request"""
-        response = self.session.patch(f"{self.base_url}{endpoint}", json=data, timeout=self.timeout)
+        response = self.session.patch(
+            f"{self.base_url}{endpoint}", json=data, timeout=self.timeout
+        )
         response.raise_for_status()
         return response.json()
     
     def _delete(self, endpoint: str) -> Dict:
         """Make DELETE request"""
-        response = self.session.delete(f"{self.base_url}{endpoint}", timeout=self.timeout)
+        response = self.session.delete(
+            f"{self.base_url}{endpoint}", timeout=self.timeout
+        )
         response.raise_for_status()
         return response.json()
+
+    # Auth methods
+    def login(self, email: str, password: str) -> Dict:
+        """Authenticate a user and return profile details"""
+        return self._post("/api/auth/login", {"email": email, "password": password})
     
     # Dashboard methods
     def get_dashboard_stats(self, user_email: str) -> Dict:
@@ -88,7 +101,8 @@ class ApplyCheAPIClient:
                 "template_body": template_body,
                 "template_type": template_type,
                 "subject": subject
-            }
+            },
+            timeout=self.timeout,
         )
         response.raise_for_status()
         return response.json()
@@ -123,10 +137,7 @@ class ApplyCheAPIClient:
         
         url = f"{self.base_url}/api/email-templates/{template_id}?" + urlencode(params_list)
         
-        response = self.session.put(
-            url,
-            json=data
-        )
+        response = self.session.put(url, json=data, timeout=self.timeout)
         response.raise_for_status()
         return response.json()
     

@@ -414,6 +414,29 @@ Or using uvicorn directly:
 uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+### 4. Seed Demo Data & Test Login
+
+Populate the database with safe demo data (users, templates, queue, logs) and create a loginable account:
+
+```bash
+python seed_test_data.py
+```
+
+The script prints the credentials on success. By default it creates:
+
+- **Email**: `test.user@example.com`
+- **Password**: `ApplyChe#2025`
+
+Use these credentials on the new login screen before the desktop UI loads, or create your own users via SQL/ORM and set a bcrypt hash (see `api/security.py`).
+
+### 5. Launch the Desktop App
+
+```bash
+python view/main_ui.py
+```
+
+You will first see the full-screen login dialog. After successful authentication a loading overlay animates while the dashboard, charts, and email editors hydrate, eliminating the “white not responding” state.
+
 ### Sample ORM Insert
 
 The project now uses SQLAlchemy everywhere. You can insert records directly via the ORM:
@@ -461,6 +484,9 @@ def create_template():
 - **API Root**: http://localhost:8000/
 
 ## API Endpoints
+
+### Authentication
+- `POST /api/auth/login` - Validate credentials and return profile metadata
 
 ### Dashboard
 - `GET /api/dashboard/stats/{user_email}` - Get dashboard statistics
@@ -514,6 +540,12 @@ rules = client.get_sending_rules("user@example.com")
 ### Example Integration
 
 See `example_integration.py` for complete examples of integrating the API client into `main_ui.py` components.
+
+### Login & Loading Flow
+
+- `LoginDialog` (in `view/main_ui.py`) is the new entry point. It calls `POST /api/auth/login`, surfaces validation errors inline, and passes the authenticated user email/display name to the main window.
+- A `LoadingOverlay` replaces the previous white screen while expensive widgets (dashboard charts, email editors, tables) render. Users instantly see that the app is preparing data instead of looking frozen.
+- `MyWindow` now accepts the authenticated identity, propagates it to `EmailEditor`, `Dashboard`, and other feature modules, updates the status bar, and ensures every page follows the same dark theme / spacing rules for a consistent UX.
 
 ## Key Changes Made
 

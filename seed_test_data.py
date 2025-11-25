@@ -21,19 +21,24 @@ from api.db_models import (
     TemplateFile,
     User,
 )
+from api.security import hash_password
 
 
 TEST_USER_EMAIL = "test.user@example.com"
+TEST_USER_PASSWORD = "ApplyChe#2025"
 
 
 def upsert_user(session):
     user = session.get(User, TEST_USER_EMAIL)
     if user:
+        if not user.password_hash:
+            user.password_hash = hash_password(TEST_USER_PASSWORD)
+            session.flush()
         return user
 
     user = User(
         email=TEST_USER_EMAIL,
-        password_hash="",
+        password_hash=hash_password(TEST_USER_PASSWORD),
         is_active=True,
         display_name="Test User",
     )
@@ -197,6 +202,7 @@ def main():
 
         session.commit()
         print("✅ Seed data inserted successfully.")
+        print(f"   Login with {TEST_USER_EMAIL} / {TEST_USER_PASSWORD}")
     except Exception as exc:
         session.rollback()
         print(f"❌ Failed to seed data: {exc}")

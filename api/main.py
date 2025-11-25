@@ -4,7 +4,7 @@ FastAPI main application
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import dashboard, email_templates, sending_rules, email_queue
+from api.routes import auth, dashboard, email_templates, sending_rules, email_queue
 
 # Configure logging
 logging.basicConfig(
@@ -34,6 +34,7 @@ app.include_router(dashboard.router)
 app.include_router(email_templates.router)
 app.include_router(sending_rules.router)
 app.include_router(email_queue.router)
+app.include_router(auth.router)
 
 
 @app.get("/")

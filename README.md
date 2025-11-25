@@ -338,15 +338,70 @@ pip install -r requirements.txt
 - `pydantic>=2.9.0` - Schema validation
 - `python-dotenv>=1.0.1` - Environment variables
 
-### 2. Configure Database
+### 2. Setup Database
 
+**First Time Setup:**
+The database `applyche_global` must be created before starting the API:
+
+```bash
+# Run the database setup script
+python setup_database.py
+```
+
+This will:
+- ✅ Create the `applyche_global` database
+- ✅ Optionally initialize schema from SQL file
+- ✅ Test the connection
+
+**Configure Database Connection:**
+The API automatically connects to PostgreSQL using settings from `model/server_info.env`.
+
+**Quick Setup (Local PostgreSQL 18):**
+```bash
+# Use the helper script (recommended)
+python switch_db_config.py local
+
+# Or manually edit model/server_info.env
+```
+
+**Current Configuration:**
 Ensure `model/server_info.env` contains:
 ```
 DB_USER=postgres
 DB_PASS=applyche
 DB_HOST=localhost
+DB_PORT=5434
 DB_NAME=applyche_global
 ```
+
+**Database Configuration:**
+- **PostgreSQL Version**: 18 (recommended)
+- **Default Port**: 5434 (PostgreSQL 18 default)
+- **Default Host**: localhost
+- **Default User**: postgres
+- **Default Password**: applyche
+
+**Switching to Remote Server:**
+```bash
+# Use helper script
+python switch_db_config.py remote
+
+# Then edit model/server_info.env with your server details:
+# DB_USER=your_username
+# DB_PASS=your_password
+# DB_HOST=your_server_ip_or_domain
+# DB_PORT=5432
+# DB_NAME=applyche_global
+```
+
+**All database connections** (`api/database.py`, `model/connect_db.py`, `model/dashboard_model.py`) automatically read from `model/server_info.env`. No code changes needed when switching databases!
+
+**Test Connection:**
+```bash
+python switch_db_config.py test
+```
+
+See `QUICK_DB_SWITCH_GUIDE.md` for detailed instructions.
 
 ### 3. Start the API Server
 
@@ -515,6 +570,10 @@ curl http://localhost:8000/api/dashboard/stats/user@example.com
 - **dependency_graph.mmd** - Mermaid diagram source
 - **README_ORM.md** - ORM-specific documentation
 - **MIGRATION_TO_ORM.md** - Migration guide
+- **DATABASE_CONFIGURATION.md** - Database setup and configuration guide
+- **QUICK_DB_SWITCH_GUIDE.md** - Quick guide to switch between local/remote databases
+- **API_CONNECTION_HANDLING.md** - API connection error handling
+- **PERFORMANCE_OPTIMIZATIONS.md** - Performance improvements
 
 ## Future Enhancements
 
@@ -530,9 +589,22 @@ curl http://localhost:8000/api/dashboard/stats/user@example.com
 ## Troubleshooting
 
 ### Database Connection Issues
+
+**Database Does Not Exist:**
+```
+Error: database "applyche_global" does not exist
+```
+**Solution:** Run `python setup_database.py` to create the database.
+
+**Other Connection Issues:**
 - Check `model/server_info.env` credentials
-- Ensure PostgreSQL is running
+- Ensure PostgreSQL 18 is running on port 5434 (or your configured port)
 - Verify database exists: `applyche_global`
+- Test connection: `python switch_db_config.py test`
+- For remote servers, ensure:
+  - Firewall allows connections on the configured port
+  - PostgreSQL `pg_hba.conf` allows connections from your IP
+  - Server is listening on the correct interface (not just localhost)
 
 ### Import Errors
 - Ensure all dependencies are installed: `pip install -r requirements.txt`

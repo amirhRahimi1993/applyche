@@ -3,14 +3,14 @@ Email Templates API routes using SQLAlchemy ORM
 """
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session, joinedload
-from api.database import get_db
+from api.database import get_db, DB_NAME
 from api.models import (
     EmailTemplateCreate,
     EmailTemplateResponse,
     EmailTemplateUpdate,
     MessageResponse
 )
-from api.db_models import EmailTemplate, TemplateFile
+from api.db_models import EmailTemplate, TemplateFile, User
 from typing import List, Optional
 
 router = APIRouter(prefix="/api/email-templates", tags=["email-templates"])
@@ -26,6 +26,20 @@ async def create_email_template(
     Create a new email template with optional file paths
     """
     try:
+        # Check if user exists, create if not (for development/testing)
+        from api.db_models import User
+        user = db.query(User).filter(User.email == template.user_email).first()
+        if not user:
+            # Auto-create user if it doesn't exist (for development)
+            # In production, you might want to require user creation first
+            user = User(
+                email=template.user_email,
+                password_hash="",  # Empty for auto-created users
+                is_active=True
+            )
+            db.add(user)
+            db.flush()
+        
         db_template = EmailTemplate(
             user_email=template.user_email,
             template_body=template.template_body,
@@ -45,10 +59,16 @@ async def create_email_template(
                 db.add(template_file)
         
         db.commit()
+        
+        # Reload the template with relationships
         db.refresh(db_template)
+        # Query again to get the relationship loaded
+        db_template = db.query(EmailTemplate).options(
+            joinedload(EmailTemplate.template_files)
+        ).filter(EmailTemplate.id == db_template.id).first()
         
         # Get file paths
-        file_paths_list = [tf.file_path for tf in db_template.template_files]
+        file_paths_list = [tf.file_path for tf in db_template.template_files] if db_template.template_files else []
         
         return EmailTemplateResponse(
             id=db_template.id,
@@ -61,6 +81,24 @@ async def create_email_template(
         )
     except Exception as e:
         db.rollback()
+        import traceback
+        error_details = traceback.format_exc()
+        
+        # Check for database connection errors
+        error_str = str(e)
+        if "does not exist" in error_str and "database" in error_str:
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Database '{DB_NAME}' does not exist. Please run 'python setup_database.py' to create it."
+            )
+        elif "connection" in error_str.lower() or "operationalerror" in error_str.lower():
+            raise HTTPException(
+                status_code=500,
+                detail=f"Database connection failed. Please check your database configuration in model/server_info.env and ensure PostgreSQL is running."
+            )
+        
+        # Log full error for debugging
+        print(f"Error creating template: {error_details}")
         raise HTTPException(status_code=500, detail=f"Error creating template: {str(e)}")
 
 
@@ -186,6 +224,9 @@ async def update_email_template(
         raise
     except Exception as e:
         db.rollback()
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error updating template: {error_details}")  # Log full error
         raise HTTPException(status_code=500, detail=f"Error updating template: {str(e)}")
 
 

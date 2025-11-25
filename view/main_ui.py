@@ -210,17 +210,20 @@ class EmailEditor(QtCore.QObject):
         self.middle_info_pass = middle_info_pass
         self.user_email = user_email
         
-        # Initialize API client
+        # Initialize API client (always create it, check availability when needed)
         try:
             self.api_client = ApplyCheAPIClient("http://localhost:8000", timeout=3)
             # Check if API is available (don't fail if it's not)
             if not self.api_client.is_available():
                 print("Info: FastAPI server is not running. Templates will be saved locally only.")
-                # Keep the client but mark it as unavailable
-                self.api_client = None
+                # Keep the client - it will be checked again when saving
         except Exception as e:
             print(f"Info: API client initialization failed: {e}")
-            self.api_client = None
+            # Still create the client - it might work later when server starts
+            try:
+                self.api_client = ApplyCheAPIClient("http://localhost:8000", timeout=3)
+            except:
+                self.api_client = None
 
         # Store uploaded files per editor
         self.uploaded_files = {}
@@ -441,13 +444,17 @@ class EmailEditor(QtCore.QObject):
                         
                         # Update attachment summary
                         self._update_attachment_summary(editor)
-        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-            # API server is not available - silently continue (offline mode)
+        except (requests.exceptions.ConnectionError, 
+                requests.exceptions.Timeout,
+                requests.exceptions.HTTPError) as e:
+            # API server is not available or returned an error - silently continue (offline mode)
             # Don't print error messages for connection issues - this is expected if server isn't running
             pass
         except Exception as e:
-            # Other errors - log but don't crash
-            print(f"Info: Could not load templates from database: {type(e).__name__}")
+            # Other unexpected errors - log but don't crash
+            # Only log if it's not a connection-related error
+            if not isinstance(e, (requests.exceptions.RequestException, requests.exceptions.HTTPError)):
+                print(f"Info: Could not load templates from database: {type(e).__name__}")
             # Don't try fallback if connection failed - it will just fail again
 
     # ====================================================
@@ -511,54 +518,77 @@ class EmailEditor(QtCore.QObject):
         self.middle_info_pass.store_data(template_key, self.saved_templates[template_key])
         
         # Save to database via API
+        # Try to ensure API client exists
+        if not self.api_client:
+            try:
+                self.api_client = ApplyCheAPIClient("http://localhost:8000", timeout=3)
+            except Exception as e:
+                print(f"Could not create API client: {e}")
+        
+        # Check if API is available and try to save
+        api_saved = False
         if self.api_client:
             try:
-                template_id = self.template_ids.get(template_key)
-                
-                if template_id:
-                    # Update existing template
-                    self.api_client.update_email_template(
-                        template_id=template_id,
-                        user_email=self.user_email,
-                        template_body=html_content,
-                        template_type=template_type,
-                        subject=subject,
-                        file_paths=file_paths
-                    )
+                # Check if API is available before attempting to save
+                if self.api_client.is_available():
+                    template_id = self.template_ids.get(template_key)
+                    
+                    if template_id:
+                        # Update existing template
+                        self.api_client.update_email_template(
+                            template_id=template_id,
+                            user_email=self.user_email,
+                            template_body=html_content,
+                            template_type=template_type,
+                            subject=subject,
+                            file_paths=file_paths
+                        )
+                    else:
+                        # Create new template
+                        result = self.api_client.create_email_template(
+                            user_email=self.user_email,
+                            template_body=html_content,
+                            template_type=template_type,
+                            subject=subject,
+                            file_paths=file_paths
+                        )
+                        # Store the new template ID
+                        self.template_ids[template_key] = result.get("id")
+                    
+                    api_saved = True
                 else:
-                    # Create new template
-                    result = self.api_client.create_email_template(
-                        user_email=self.user_email,
-                        template_body=html_content,
-                        template_type=template_type,
-                        subject=subject,
-                        file_paths=file_paths
-                    )
-                    # Store the new template ID
-                    self.template_ids[template_key] = result.get("id")
-                
-                QtWidgets.QMessageBox.information(
-                    editor,
-                    "Template Saved",
-                    f"✅ {template_key.replace('_', ' ').title()} has been saved successfully to database.\n\n"
-                    f"Attachments: {len(file_paths)} file(s)",
-                )
+                    # API server is not running
+                    print("API server is not available - saving locally only")
+            except requests.exceptions.ConnectionError:
+                # Connection error - API server is not running
+                print("API server connection failed - saving locally only")
             except Exception as e:
+                # Other errors
+                print(f"Error saving template to API: {e}")
                 QtWidgets.QMessageBox.warning(
                     editor,
                     "Save Warning",
                     f"Template saved locally but failed to save to database:\n{str(e)}\n\n"
-                    f"Please check API connection."
+                    f"Please ensure the FastAPI server is running on http://localhost:8000"
                 )
-                print(f"Error saving template to API: {e}")
-        else:
-            # No API client, just save locally
+        
+        # Show success message
+        if api_saved:
             QtWidgets.QMessageBox.information(
                 editor,
                 "Template Saved",
+                f"✅ {template_key.replace('_', ' ').title()} has been saved successfully to database.\n\n"
+                f"Attachments: {len(file_paths)} file(s)",
+            )
+        else:
+            # Saved locally only
+            QtWidgets.QMessageBox.information(
+                editor,
+                "Template Saved Locally",
                 f"✅ {template_key.replace('_', ' ').title()} has been saved locally.\n\n"
                 f"Attachments: {len(file_paths)} file(s)\n\n"
-                f"Note: API not connected, template not saved to database.",
+                f"Note: FastAPI server is not running. To save to database, please start the API server:\n"
+                f"  python -m uvicorn api.main:app --reload",
             )
         
         print(f"Saved {template_key}: {self.saved_templates[template_key]}")

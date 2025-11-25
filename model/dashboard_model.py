@@ -6,10 +6,13 @@ load_dotenv("server_info.env")
 
 class Dashboard_model:
     def __init__(self):
-        self.db_name = os.getenv("DB_NAME")
-        self.username = os.getenv("DB_USER")
-        self.password = os.getenv("DB_PASS")
-        self.host = os.getenv("DB_HOST")
+        # Database configuration with defaults for PostgreSQL 18
+        # Defaults: localhost:5434, user=postgres, password=applyche
+        self.db_name = os.getenv("DB_NAME", "applyche_global")
+        self.username = os.getenv("DB_USER", "postgres")
+        self.password = os.getenv("DB_PASS", "applyche")
+        self.host = os.getenv("DB_HOST", "localhost")
+        self.port = int(os.getenv("DB_PORT", "5434"))  # PostgreSQL 18 default port
         self.column_storage = {
             "main_mail" : "is_main_mail_send",
             "first_reminder": "is_first_reminder_send",
@@ -25,7 +28,7 @@ class Dashboard_model:
                 user=self.username,
                 password=self.password,
                 host=self.host,
-                port=5433,           # default Postgres port
+                port=self.port,      # Configurable port (default: 5434 for PostgreSQL 18)
                 sslmode="prefer"     # change to "require" if server enforces SSL
             )
             print("✅ Connected successfully")

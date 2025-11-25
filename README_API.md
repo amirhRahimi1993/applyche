@@ -14,8 +14,28 @@ pip install -r requirements.txt
 DB_USER=postgres
 DB_PASS=applyche
 DB_HOST=localhost
+DB_PORT=5434
 DB_NAME=applyche_global
 ```
+
+**Database Configuration:**
+- **PostgreSQL Version**: 18 (recommended)
+- **Default Port**: 5434 (PostgreSQL 18 default)
+- **Default Host**: localhost
+- **Default User**: postgres
+- **Default Password**: applyche
+
+**For Remote Server:**
+To connect to a remote PostgreSQL server, update `model/server_info.env`:
+```
+DB_USER=your_username
+DB_PASS=your_password
+DB_HOST=your_server_ip_or_domain
+DB_PORT=5432
+DB_NAME=applyche_global
+```
+
+All database connection files automatically read from this configuration file with sensible defaults.
 
 3. Start the FastAPI server:
 ```bash
@@ -102,6 +122,8 @@ class Dashboard:
 ## Notes
 
 - The API uses the same database connection settings as the existing code
+- Database configuration is flexible and can be changed via `model/server_info.env`
+- Default configuration: PostgreSQL 18 on localhost:5434
 - CORS is enabled for all origins (restrict in production)
 - All endpoints require proper error handling in the client
 - The API follows RESTful conventions

@@ -28,6 +28,21 @@ class MyWindow(QtWidgets.QMainWindow):
 
         self.show()
 
+        self.page_title_label = self.findChild(QtWidgets.QLabel, "lbl_page_title")
+        self._nav_buttons = [
+            getattr(self, "btn_home", None),
+            getattr(self, "btn_email_template", None),
+            getattr(self, "btn_professor_list", None),
+            getattr(self, "btn_prepare_send_email", None),
+            getattr(self, "btn_statics", None),
+            getattr(self, "btn_expriences", None),
+            getattr(self, "btn_results", None),
+            getattr(self, "btn_profile", None),
+        ]
+        self._nav_buttons = [btn for btn in self._nav_buttons if btn is not None]
+        self._apply_global_styles()
+        self._assign_nav_icons()
+
         # Enforce stretch (20% vs 80%)
         layout = self.widget_content.layout()
         if layout:
@@ -57,8 +72,6 @@ class MyWindow(QtWidgets.QMainWindow):
         self.dashboard.chart_emaill_send_by_reminder()
 
 
-        self.current_page = 0
-        self.btn_hamburger.clicked.connect(self.hamburger_toggle)
         self.btn_home.clicked.connect(self.__btn_page_home_arise)
         self.btn_email_template.clicked.connect(self.__btn_page_email_template)
         self.btn_expriences.clicked.connect(self.btn_page_expriences)
@@ -69,11 +82,14 @@ class MyWindow(QtWidgets.QMainWindow):
 
         self.btn_profile.clicked.connect(self.__btn_page_profile)
         self.btn_log_out.clicked.connect(self.btn_page_logout)
+        self.__btn_page_home_arise()
 
     def __btn_page_profile(self):
+        self._set_active_nav(self.btn_profile if hasattr(self, "btn_profile") else None, "Profile", self.page_profile)
         self.stacked_content.setCurrentWidget(self.page_profile)
 
     def __btn_page_home_arise(self):
+        self._set_active_nav(self.btn_home, "Dashboard", self.page_Dashboard)
         self.stacked_content.setCurrentWidget(self.page_Dashboard)
         self.dashboard.report()
         self.dashboard.chart_email_answered_by_professor()
@@ -81,35 +97,108 @@ class MyWindow(QtWidgets.QMainWindow):
         self.dashboard.chart_emaill_send_by_reminder()
 
     def __btn_page_email_template(self):
+        self._set_active_nav(self.btn_email_template, "Email Templates", self.page_email_template)
         self.stacked_content.setCurrentWidget(self.page_email_template)
 
     def btn_page_expriences(self):
+        self._set_active_nav(self.btn_expriences, "Experiences", self.page_write_your_exprience)
         self.stacked_content.setCurrentWidget(self.page_write_your_exprience)
 
     def btn_page_results(self):
+        self._set_active_nav(self.btn_results, "Results", self.page_results)
         self.stacked_content.setCurrentWidget(self.page_results)
 
     def btn_page_prepare_send_email(self):
+        self._set_active_nav(self.btn_prepare_send_email, "Send Email", self.page_prepare_send_email)
         self.stacked_content.setCurrentWidget(self.page_prepare_send_email)
 
     def btn_page_statics(self):
+        self._set_active_nav(self.btn_statics, "Statistics", self.page_statics)
         self.stacked_content.setCurrentWidget(self.page_statics)
 
     def btn_page_professor_list(self):
+        self._set_active_nav(self.btn_professor_list, "Professors", self.page_professor_list)
         self.stacked_content.setCurrentWidget(self.page_professor_list)
 
     def btn_page_setting(self):
+        self._set_active_nav(None, "Settings", self.page_settings)
         self.stacked_content.setCurrentWidget(self.page_settings)
 
     def btn_page_help(self):
+        self._set_active_nav(None, "Help", self.page_help)
         self.stacked_content.setCurrentWidget(self.page_help)
 
     def btn_page_logout(self):
         pass
 
-    def hamburger_toggle(self):
-        self.stacked_menu.setCurrentIndex(self.current_page)
-        self.current_page = 1 - self.current_page
+    def _set_active_nav(self, button, title, page_widget=None):
+        if page_widget is not None and self.stacked_content.currentWidget() is not page_widget:
+            self.stacked_content.setCurrentWidget(page_widget)
+
+        for nav_button in self._nav_buttons:
+            nav_button.setProperty("active", nav_button is button)
+            nav_button.style().unpolish(nav_button)
+            nav_button.style().polish(nav_button)
+
+        if self.page_title_label and title:
+            self.page_title_label.setText(title)
+
+    def _apply_global_styles(self):
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #0F172A;
+            }
+            #widget_main_value {
+                background-color: #0B1120;
+                border-radius: 24px;
+            }
+            #widget_content {
+                background-color: #0B1120;
+                border-radius: 24px;
+            }
+            #widget_header {
+                background-color: #0B1120;
+                border-radius: 18px;
+            }
+            #lineEdit {
+                background-color: #1F2937;
+                color: #E5E7EB;
+                border: 1px solid #374151;
+                border-radius: 14px;
+                padding: 12px 16px;
+            }
+            #btn_search_professor {
+                background-color: #2563EB;
+                color: #FFFFFF;
+                border-radius: 14px;
+                padding: 12px 26px;
+                font-weight: bold;
+            }
+            #btn_search_professor:hover {
+                background-color: #1D4ED8;
+            }
+            #btn_notification {
+                background-color: transparent;
+            }
+        """)
+
+    def _assign_nav_icons(self):
+        icon_mapping = {
+            getattr(self, "btn_home", None): QtWidgets.QStyle.StandardPixmap.SP_ComputerIcon,
+            getattr(self, "btn_email_template", None): QtWidgets.QStyle.StandardPixmap.SP_FileIcon,
+            getattr(self, "btn_professor_list", None): QtWidgets.QStyle.StandardPixmap.SP_DirIcon,
+            getattr(self, "btn_prepare_send_email", None): QtWidgets.QStyle.StandardPixmap.SP_ArrowForward,
+            getattr(self, "btn_statics", None): QtWidgets.QStyle.StandardPixmap.SP_DesktopIcon,
+            getattr(self, "btn_expriences", None): QtWidgets.QStyle.StandardPixmap.SP_FileDialogInfoView,
+            getattr(self, "btn_results", None): QtWidgets.QStyle.StandardPixmap.SP_DialogApplyButton,
+            getattr(self, "btn_profile", None): QtWidgets.QStyle.StandardPixmap.SP_FileDialogContentsView,
+        }
+
+        for button, icon_enum in icon_mapping.items():
+            if not button:
+                continue
+            button.setIcon(self.style().standardIcon(icon_enum))
+            button.setIconSize(QtCore.QSize(20, 20))
 
 
 class Dashboard:

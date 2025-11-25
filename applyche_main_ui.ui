@@ -76,15 +76,28 @@
           </font>
          </property>
          <property name="styleSheet">
-          <string notr="true">QWidget{
-	background-color: black;
-	color:white;
+          <string notr="true">#left_menu_comprehensive {
+    background-color: #111827;
+    color: #E5E7EB;
+    border-radius: 16px;
+    padding: 24px 12px;
 }
-QPushButton
-{
-	background-color:white;
-	color:black;
-	font-size:20px;
+#left_menu_comprehensive QPushButton {
+    background-color: transparent;
+    color: #9CA3AF;
+    font-size: 16px;
+    text-align: left;
+    padding: 12px 18px;
+    border-radius: 12px;
+    border: none;
+}
+#left_menu_comprehensive QPushButton:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #FFFFFF;
+}
+#left_menu_comprehensive QPushButton[active=&quot;true&quot;] {
+    background-color: #2563EB;
+    color: #FFFFFF;
 }
 </string>
          </property>
@@ -109,13 +122,9 @@ QPushButton
                  <stylestrategy>NoAntialias</stylestrategy>
                 </font>
                </property>
-               <property name="styleSheet">
-                <string notr="true">QPushButton
-{
-	padding-left:-40px;
-}
-</string>
-               </property>
+              <property name="styleSheet">
+               <string notr="true"/>
+              </property>
                <property name="text">
                 <string>DashBoard</string>
                </property>
@@ -174,12 +183,9 @@ QPushButton
                  <bold>true</bold>
                 </font>
                </property>
-               <property name="styleSheet">
-                <string notr="true">QPushButton
-{
-	padding-left:-20px;
-}</string>
-               </property>
+              <property name="styleSheet">
+               <string notr="true"/>
+              </property>
                <property name="text">
                 <string>Professors List</string>
                </property>
@@ -209,12 +215,9 @@ QPushButton
                  <bold>true</bold>
                 </font>
                </property>
-               <property name="styleSheet">
-                <string notr="true">QPushButton
-{
-	padding-left:-50px;
-}</string>
-               </property>
+              <property name="styleSheet">
+               <string notr="true"/>
+              </property>
                <property name="text">
                 <string>Send Email</string>
                </property>
@@ -247,12 +250,9 @@ QPushButton
                <property name="layoutDirection">
                 <enum>Qt::LayoutDirection::LeftToRight</enum>
                </property>
-               <property name="styleSheet">
-                <string notr="true">QPushButton
-{
-	padding-left:-100px;
-}</string>
-               </property>
+              <property name="styleSheet">
+               <string notr="true"/>
+              </property>
                <property name="text">
                 <string>Statics</string>
                </property>
@@ -311,9 +311,9 @@ QPushButton
                  <bold>true</bold>
                 </font>
                </property>
-               <property name="styleSheet">
-                <string notr="true">padding-left:-90px</string>
-               </property>
+              <property name="styleSheet">
+               <string notr="true"/>
+              </property>
                <property name="text">
                 <string>Results</string>
                </property>
@@ -790,34 +790,41 @@ margin-top:5;
         </property>
         <layout class="QHBoxLayout" name="horizontalLayout_7">
          <item>
-          <widget class="QPushButton" name="btn_hamburger">
-           <property name="text">
-            <string/>
-           </property>
-           <property name="icon">
-            <iconset resource="resources.qrc">
-             <normaloff>:/images/images/hamburgerbutton.png</normaloff>:/images/images/hamburgerbutton.png</iconset>
-           </property>
-           <property name="iconSize">
+          <widget class="QLabel" name="lbl_page_title">
+           <property name="minimumSize">
             <size>
-             <width>80</width>
-             <height>80</height>
+             <width>200</width>
+             <height>0</height>
             </size>
+           </property>
+           <property name="font">
+            <font>
+             <pointsize>20</pointsize>
+             <bold>true</bold>
+            </font>
+           </property>
+           <property name="text">
+            <string>Dashboard</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignVCenter</set>
            </property>
           </widget>
          </item>
          <item>
-          <widget class="QLineEdit" name="lineEdit"/>
+          <widget class="QLineEdit" name="lineEdit">
+           <property name="placeholderText">
+            <string>Search professors...</string>
+           </property>
+          </widget>
          </item>
          <item>
           <widget class="QPushButton" name="btn_search_professor">
            <property name="styleSheet">
-            <string notr="true">background-color: rgb(202, 185, 185);
-color: green;
-font:bold;</string>
+            <string notr="true"/>
            </property>
            <property name="text">
-            <string>Search Professor in here!</string>
+            <string>Search</string>
            </property>
           </widget>
          </item>
@@ -869,7 +876,7 @@ font:bold;</string>
          <string notr="true"/>
         </property>
         <property name="currentIndex">
-         <number>10</number>
+         <number>0</number>
         </property>
         <widget class="QWidget" name="page_Dashboard">
          <widget class="QWidget" name="widget_main" native="true">

@@ -355,7 +355,29 @@ class MyWindow(QtWidgets.QMainWindow):
             QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
-            QtWidgets.QApplication.instance().quit()
+            self._relaunch_after_logout()
+
+    def _relaunch_after_logout(self):
+        """
+        Close the current window and bring the LoginDialog back up.
+        If the user cancels the login, exit the app.
+        """
+        app = QtWidgets.QApplication.instance()
+        if not app:
+            self.close()
+            return
+
+        self.hide()
+
+        def _open_login():
+            new_window = launch_main_window(app)
+            if not new_window:
+                app.quit()
+
+            # Current window is no longer needed.
+            self.deleteLater()
+
+        QtCore.QTimer.singleShot(0, _open_login)
 
     def _set_active_nav(self, button, title, page_widget=None):
         if page_widget is not None and self.stacked_content.currentWidget() is not page_widget:

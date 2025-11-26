@@ -108,3 +108,4 @@ DB_NAME=applyche_global
 
 See `DATABASE_CONFIGURATION.md` for detailed configuration options.
 
+

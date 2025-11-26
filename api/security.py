@@ -27,3 +27,4 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         # Older rows may still store plain-text passwords.
         return plain_password == hashed_password
 
+

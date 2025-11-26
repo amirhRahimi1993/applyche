@@ -37,3 +37,4 @@ def login(credentials: LoginRequest, db: Session = Depends(get_db)) -> LoginResp
         message="Login successful",
     )
 
+

@@ -140,3 +140,4 @@ This file (`ARCHITECTURE_OVERVIEW.md`) is the top-level narrative connecting all
 With this overview plus the existing doc set, a new contributor should be able to understand the entire stack, spin up the services, reason about data flow, and begin making changes confidently. For further details dive into `README.md` or the specific doc that matches your task.
 
 
+

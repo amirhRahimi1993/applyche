@@ -24,3 +24,4 @@
 - **Seeding/Test Users**: When creating demo users (see `seed_test_data.py`), always call `hash_password()` before persisting the password so that the login flow and FastAPI authentication remain consistent.
 
 
+

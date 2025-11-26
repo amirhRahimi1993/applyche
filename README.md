@@ -338,15 +338,70 @@ pip install -r requirements.txt
 - `pydantic>=2.9.0` - Schema validation
 - `python-dotenv>=1.0.1` - Environment variables
 
-### 2. Configure Database
+### 2. Setup Database
 
+**First Time Setup:**
+The database `applyche_global` must be created before starting the API:
+
+```bash
+# Run the database setup script
+python setup_database.py
+```
+
+This will:
+- ✅ Create the `applyche_global` database
+- ✅ Optionally initialize schema from SQL file
+- ✅ Test the connection
+
+**Configure Database Connection:**
+The API automatically connects to PostgreSQL using settings from `model/server_info.env`.
+
+**Quick Setup (Local PostgreSQL 18):**
+```bash
+# Use the helper script (recommended)
+python switch_db_config.py local
+
+# Or manually edit model/server_info.env
+```
+
+**Current Configuration:**
 Ensure `model/server_info.env` contains:
 ```
 DB_USER=postgres
 DB_PASS=applyche
 DB_HOST=localhost
+DB_PORT=5434
 DB_NAME=applyche_global
 ```
+
+**Database Configuration:**
+- **PostgreSQL Version**: 18 (recommended)
+- **Default Port**: 5434 (PostgreSQL 18 default)
+- **Default Host**: localhost
+- **Default User**: postgres
+- **Default Password**: applyche
+
+**Switching to Remote Server:**
+```bash
+# Use helper script
+python switch_db_config.py remote
+
+# Then edit model/server_info.env with your server details:
+# DB_USER=your_username
+# DB_PASS=your_password
+# DB_HOST=your_server_ip_or_domain
+# DB_PORT=5432
+# DB_NAME=applyche_global
+```
+
+**All database connections** (`api/database.py`, `model/connect_db.py`, `model/dashboard_model.py`) automatically read from `model/server_info.env`. No code changes needed when switching databases!
+
+**Test Connection:**
+```bash
+python switch_db_config.py test
+```
+
+See `QUICK_DB_SWITCH_GUIDE.md` for detailed instructions.
 
 ### 3. Start the API Server
 
@@ -359,6 +414,69 @@ Or using uvicorn directly:
 uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+### 4. Seed Demo Data & Test Login
+
+Populate the database with safe demo data (users, templates, queue, logs) and create a loginable account:
+
+```bash
+python seed_test_data.py
+```
+
+The script prints the credentials on success. By default it creates:
+
+- **Email**: `test.user@example.com`
+- **Password**: `ApplyChe#2025`
+
+Use these credentials on the new login screen before the desktop UI loads, or create your own users via SQL/ORM and set a bcrypt hash (see `api/security.py`).
+
+### 5. Launch the Desktop App
+
+```bash
+python view/main_ui.py
+```
+
+You will first see the full-screen login dialog. After successful authentication a loading overlay animates while the dashboard, charts, and email editors hydrate, eliminating the “white not responding” state.
+
+### Sample ORM Insert
+
+The project now uses SQLAlchemy everywhere. You can insert records directly via the ORM:
+
+```python
+from datetime import datetime, timezone
+
+from api.database import SessionLocal
+from api.db_models import EmailTemplate, User
+
+
+def create_template():
+    session = SessionLocal()
+    try:
+        user_email = "user@example.com"
+
+        user = session.get(User, user_email)
+        if not user:
+            user = User(email=user_email, password_hash="", is_active=True)
+            session.add(user)
+            session.flush()
+
+        template = EmailTemplate(
+            user_email=user_email,
+            subject="Hello from ORM",
+            template_body="<p>This template was created via SQLAlchemy ORM.</p>",
+            template_type=0,
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(template)
+        session.commit()
+        session.refresh(template)
+        print(f"Created template #{template.id}")
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+```
+
 ### 4. Access API Documentation
 
 - **Swagger UI**: http://localhost:8000/docs
@@ -366,6 +484,9 @@ uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 - **API Root**: http://localhost:8000/
 
 ## API Endpoints
+
+### Authentication
+- `POST /api/auth/login` - Validate credentials and return profile metadata
 
 ### Dashboard
 - `GET /api/dashboard/stats/{user_email}` - Get dashboard statistics
@@ -419,6 +540,12 @@ rules = client.get_sending_rules("user@example.com")
 ### Example Integration
 
 See `example_integration.py` for complete examples of integrating the API client into `main_ui.py` components.
+
+### Login & Loading Flow
+
+- `LoginDialog` (in `view/main_ui.py`) is the new entry point. It calls `POST /api/auth/login`, surfaces validation errors inline, and passes the authenticated user email/display name to the main window.
+- A `LoadingOverlay` replaces the previous white screen while expensive widgets (dashboard charts, email editors, tables) render. Users instantly see that the app is preparing data instead of looking frozen.
+- `MyWindow` now accepts the authenticated identity, propagates it to `EmailEditor`, `Dashboard`, and other feature modules, updates the status bar, and ensures every page follows the same dark theme / spacing rules for a consistent UX.
 
 ## Key Changes Made
 
@@ -515,6 +642,10 @@ curl http://localhost:8000/api/dashboard/stats/user@example.com
 - **dependency_graph.mmd** - Mermaid diagram source
 - **README_ORM.md** - ORM-specific documentation
 - **MIGRATION_TO_ORM.md** - Migration guide
+- **DATABASE_CONFIGURATION.md** - Database setup and configuration guide
+- **QUICK_DB_SWITCH_GUIDE.md** - Quick guide to switch between local/remote databases
+- **API_CONNECTION_HANDLING.md** - API connection error handling
+- **PERFORMANCE_OPTIMIZATIONS.md** - Performance improvements
 
 ## Future Enhancements
 
@@ -530,9 +661,22 @@ curl http://localhost:8000/api/dashboard/stats/user@example.com
 ## Troubleshooting
 
 ### Database Connection Issues
+
+**Database Does Not Exist:**
+```
+Error: database "applyche_global" does not exist
+```
+**Solution:** Run `python setup_database.py` to create the database.
+
+**Other Connection Issues:**
 - Check `model/server_info.env` credentials
-- Ensure PostgreSQL is running
+- Ensure PostgreSQL 18 is running on port 5434 (or your configured port)
 - Verify database exists: `applyche_global`
+- Test connection: `python switch_db_config.py test`
+- For remote servers, ensure:
+  - Firewall allows connections on the configured port
+  - PostgreSQL `pg_hba.conf` allows connections from your IP
+  - Server is listening on the correct interface (not just localhost)
 
 ### Import Errors
 - Ensure all dependencies are installed: `pip install -r requirements.txt`

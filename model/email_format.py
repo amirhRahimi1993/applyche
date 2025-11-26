@@ -1,35 +1,79 @@
-import psycopg
-import os
-from connect_db import connect_to_db
-class Email_Format:
-    def __init__(self,email):
-        connection = connect_to_db()
-        self.conn = connection.connect()
-        self.column_keys = 'max_email_per_day,main_email_per_day,reminder1_per_day,reminder2_per_day,reminder3_per_day,delay_time,delay_between_reminders,is_shuffle,is_local_time,email_per_university'
-        self.table_name = 'email_format'
-        self.email = email
-    def load_format(self):
-        cur = self.conn.cursor()
-        values = cur.execute('SELECT ' + self.column_keys + 'from '+self.table_name + 'where email= ' + self.email + ';')
-        return values
+"""
+Utility helpers around the SQLAlchemy ORM `SendingRules` table.
+Historically this module used psycopg directly; it now relies on the shared ORM session.
+"""
+from typing import Dict, Optional
 
-    def insert_format(self, information):
-        keys = self.column_keys.split(",")  # e.g. "name,age,email"
-        cur = self.conn.cursor()
+from sqlalchemy import select
 
-        # Build query parts
-        columns = ", ".join(keys)
-        placeholders = ", ".join(["%s"] * len(keys))
-
-        query = f"INSERT INTO {self.table_name} ({columns}) VALUES ({placeholders})"
-
-        # Ensure values are taken in the same order as keys
-        values = tuple(information[k] for k in keys)
-
-        cur.execute(query, values)
-        self.conn.commit()
-
-        return cur.rowcount  # or cur.lastrowid if you need inserted id
+from api.database import SessionLocal
+from api.db_models import SendingRules, User
 
 
-Email_Format()
+class EmailFormat:
+    """Lightweight helper to read/write sending rule preferences via ORM sessions."""
+
+    def __init__(self, user_email: str):
+        self.user_email = user_email
+        self._session_factory = SessionLocal
+        self._fields = (
+            "main_mail_number",
+            "reminder_one",
+            "reminder_two",
+            "reminder_three",
+            "local_professor_time",
+            "max_email_per_university",
+            "send_working_day_only",
+            "period_between_reminders",
+            "delay_sending_mail",
+            "start_time_send",
+        )
+
+    def _serialize(self, rules: SendingRules) -> Dict[str, object]:
+        return {field: getattr(rules, field) for field in self._fields}
+
+    def load_format(self) -> Optional[Dict[str, object]]:
+        """Return the user's sending rules as a dictionary, or None if not configured."""
+        with self._session_factory() as session:
+            rules = session.execute(
+                select(SendingRules).where(SendingRules.user_email == self.user_email)
+            ).scalars().first()
+            if not rules:
+                return None
+            return self._serialize(rules)
+
+    def insert_format(self, preferences: Dict[str, object]) -> Dict[str, object]:
+        """
+        Create or update sending rules for the user.
+        Keys in `preferences` should match the SendingRules ORM columns listed in `_fields`.
+        """
+        with self._session_factory() as session:
+            rules = session.execute(
+                select(SendingRules).where(SendingRules.user_email == self.user_email)
+            ).scalars().first()
+
+            if not rules:
+                # Ensure the user row exists before creating sending rules
+                user = session.get(User, self.user_email)
+                if not user:
+                    user = User(
+                        email=self.user_email,
+                        password_hash="",
+                        is_active=True,
+                    )
+                    session.add(user)
+                    session.flush()
+
+                rules = SendingRules(user_email=self.user_email)
+
+            for field in self._fields:
+                if field in preferences:
+                    setattr(rules, field, preferences[field])
+
+            session.add(rules)
+            session.commit()
+            session.refresh(rules)
+            return self._serialize(rules)
+
+
+__all__ = ["EmailFormat"]

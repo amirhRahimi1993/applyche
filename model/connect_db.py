@@ -1,37 +1,43 @@
-import psycopg
-from dotenv import load_dotenv
-import os
+"""
+Legacy compatibility helpers that now proxy to the SQLAlchemy ORM session.
+Use `session_scope()` to work with the database safely.
+"""
+from contextlib import contextmanager
+from typing import Generator
 
-load_dotenv("server_info.env")
+from api.database import SessionLocal
 
-class connect_to_db:
+
+class ORMDatabaseConnection:
+    """Wraps the global SQLAlchemy session factory for legacy callers."""
+
     def __init__(self):
-        self.db_name = os.getenv("DB_NAME")
-        self.username = os.getenv("DB_USER")
-        self.password = os.getenv("DB_PASS")
-        self.host = os.getenv("DB_HOST")
-        self.column_storage = {
-            "main_mail" : "is_main_mail_send",
-            "first_reminder": "is_first_reminder_send",
-            "second_reminder": "is_second_reminder_send",
-            "third_reminder": "is_third_reminder_send"
-        }
-    def return_username_password(self):
-        return self.username , self.password
+        self._session_factory = SessionLocal
+
     def connect(self):
-        self.conn = None
+        """Maintains compatibility with older code that expected `.connect()`."""
+        return self._session_factory()
+
+    @contextmanager
+    def session_scope(self) -> Generator:
+        """Provide a transactional scope around a series of operations."""
+        session = self._session_factory()
         try:
-            self.conn = psycopg.connect(
-                dbname=self.db_name,
-                user=self.username,
-                password=self.password,
-                host=self.host,
-                port=5433,           # default Postgres port
-                sslmode="prefer"     # change to "require" if server enforces SSL
-            )
-            print("✅ Connected successfully")
-            cur = self.conn.cursor()
-            cur.execute("select count(is_main_mail_send) as main_mail  from email_report  where is_main_mail_send = true group by pk;")
-        except psycopg.OperationalError as e:
-            print("❌ Connection failed:", e)
-        return self.conn
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+
+_ORM_DB = ORMDatabaseConnection()
+
+
+def connect_to_db() -> ORMDatabaseConnection:
+    """
+    Legacy entrypoint.
+    Returns a singleton that can open ORM sessions via `.connect()` or `.session_scope()`.
+    """
+    return _ORM_DB

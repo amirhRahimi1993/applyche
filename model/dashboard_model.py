@@ -1,45 +1,77 @@
-import psycopg
-from dotenv import load_dotenv
+"""
+Dashboard helper that now queries the PostgreSQL database exclusively via SQLAlchemy ORM.
+"""
 import os
+from typing import Dict, Optional
 
-load_dotenv("server_info.env")
+from sqlalchemy import case, func
 
-class Dashboard_model:
-    def __init__(self):
-        self.db_name = os.getenv("DB_NAME")
-        self.username = os.getenv("DB_USER")
-        self.password = os.getenv("DB_PASS")
-        self.host = os.getenv("DB_HOST")
-        self.column_storage = {
-            "main_mail" : "is_main_mail_send",
-            "first_reminder": "is_first_reminder_send",
-            "second_reminder": "is_second_reminder_send",
-            "third_reminder": "is_third_reminder_send"
-        }
-        self.__connect()
+from api.database import SessionLocal
+from api.db_models import EmailQueue, ProfessorContact, SendLog
 
-    def __connect(self):
-        try:
-            self.conn = psycopg.connect(
-                dbname=self.db_name,
-                user=self.username,
-                password=self.password,
-                host=self.host,
-                port=5433,           # default Postgres port
-                sslmode="prefer"     # change to "require" if server enforces SSL
+
+class DashboardModel:
+    """Expose simple helper methods for legacy UI components while using the ORM under the hood."""
+
+    def __init__(self, default_user_email: Optional[str] = None):
+        self._session_factory = SessionLocal
+        self.default_user_email = default_user_email or os.getenv(
+            "DEFAULT_USER_EMAIL",
+            "user@example.com",
+        )
+
+    def _resolve_user(self, user_email: Optional[str]) -> str:
+        return user_email or self.default_user_email
+
+    def get_dashboard_stats(self, user_email: Optional[str] = None) -> Dict[str, int]:
+        """Return the same aggregate stats exposed via the FastAPI dashboard endpoint."""
+        user_email = self._resolve_user(user_email)
+        with self._session_factory() as session:
+            send_log_counts = session.query(
+                func.sum(case((SendLog.send_type == 0, 1), else_=0)).label("main_mail"),
+                func.sum(case((SendLog.send_type == 1, 1), else_=0)).label("first_reminder"),
+                func.sum(case((SendLog.send_type == 2, 1), else_=0)).label("second_reminder"),
+                func.sum(case((SendLog.send_type == 3, 1), else_=0)).label("third_reminder"),
+            ).filter(SendLog.user_email == user_email).first()
+
+            stats = {
+                "main_mail": int(send_log_counts.main_mail or 0),
+                "first_reminder": int(send_log_counts.first_reminder or 0),
+                "second_reminder": int(send_log_counts.second_reminder or 0),
+                "third_reminder": int(send_log_counts.third_reminder or 0),
+            }
+
+            stats["answered_professors"] = (
+                session.query(func.count(ProfessorContact.id))
+                .filter(
+                    ProfessorContact.user_email == user_email,
+                    ProfessorContact.contact_status == 3,
+                )
+                .scalar()
+                or 0
             )
-            print("✅ Connected successfully")
-            cur = self.conn.cursor()
-            cur.execute("select count(is_main_mail_send) as main_mail  from email_report  where is_main_mail_send = true group by pk;")
-        except psycopg.OperationalError as e:
-            print("❌ Connection failed:", e)
-    def analysis_email(self,key):
-        cur = self.conn.cursor()
-        return cur.execute(
-            f"select count({self.column_storage[key]}) from email_report  where {self.column_storage[key]} = true;")
-    def return_not_send_mail(self):
-        cur = self.conn.cursor()
-        return cur.execute(
-            f"select count({self.column_storage['main_mail']}) from email_report  where {self.column_storage['main_mail']} = false;")
-Dashboard = Dashboard_model()
-conn = Dashboard.return_not_send_mail()
+
+            stats["pending_queue"] = (
+                session.query(func.count(EmailQueue.id))
+                .filter(
+                    EmailQueue.user_email == user_email,
+                    EmailQueue.status == 0,
+                )
+                .scalar()
+                or 0
+            )
+
+            return stats
+
+    def analysis_email(self, key: str, user_email: Optional[str] = None) -> int:
+        """Preserve the legacy API by returning a single metric by key."""
+        stats = self.get_dashboard_stats(user_email)
+        return stats.get(key, 0)
+
+    def return_not_send_mail(self, user_email: Optional[str] = None) -> int:
+        """Legacy helper retained for backwards compatibility."""
+        stats = self.get_dashboard_stats(user_email)
+        return stats.get("pending_queue", 0)
+
+
+Dashboard = DashboardModel()

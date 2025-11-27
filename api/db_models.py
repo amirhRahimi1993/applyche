@@ -4,7 +4,7 @@ SQLAlchemy ORM models for ApplyChe database
 from sqlalchemy import (
     Column, Integer, BigInteger, String, Text, Boolean, SmallInteger,
     Numeric, Date, Time, DateTime, ForeignKey, UniqueConstraint, CheckConstraint,
-    Index, JSON
+    Index, JSON, text
 )
 from sqlalchemy.dialects.postgresql import CITEXT, JSONB
 from sqlalchemy.orm import DeclarativeBase
@@ -343,7 +343,7 @@ class SendingRules(Base):
     send_working_day_only = Column(Boolean, server_default='true', nullable=False)
     period_between_reminders = Column(SmallInteger, server_default='7', nullable=False)
     delay_sending_mail = Column(SmallInteger, server_default='0', nullable=False)
-    start_time_send = Column(Time(timezone=True), server_default="'09:00:00'::time", nullable=True)
+    start_time_send = Column(Time(timezone=True), server_default=text("'09:00:00+00'::time with time zone"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     
     __table_args__ = (

@@ -17,9 +17,7 @@ def login(credentials: LoginRequest, db: Session = Depends(get_db)) -> LoginResp
     """
     Validate user credentials against the Users table.
     """
-    print("attemp login")
     user = db.query(User).filter(User.email == credentials.email).first()
-    print(user.password_hash)
 
     if not user or not verify_password(credentials.password, user.password_hash or ""):
         raise HTTPException(

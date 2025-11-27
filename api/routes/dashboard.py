@@ -3,7 +3,7 @@ Dashboard API routes using SQLAlchemy ORM
 """
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case
+from sqlalchemy import func
 from api.database import get_db
 from api.models import DashboardStats
 from api.db_models import SendLog, ProfessorContact, EmailQueue
@@ -15,23 +15,31 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 async def get_dashboard_stats(user_email: str, db: Session = Depends(get_db)):
     """
     Get dashboard statistics for a user
-    Optimized to use fewer queries with conditional aggregation
     """
     try:
-        # Optimize: Use a single query with conditional aggregation for SendLog counts
-        send_log_counts = db.query(
-            func.sum(case((SendLog.send_type == 0, 1), else_=0)).label('main_emails'),
-            func.sum(case((SendLog.send_type == 1, 1), else_=0)).label('first_reminder'),
-            func.sum(case((SendLog.send_type == 2, 1), else_=0)).label('second_reminder'),
-            func.sum(case((SendLog.send_type == 3, 1), else_=0)).label('third_reminder')
-        ).filter(
-            SendLog.user_email == user_email
-        ).first()
+        # Count main emails sent (send_type = 0)
+        email_you_send = db.query(func.count(SendLog.id)).filter(
+            SendLog.user_email == user_email,
+            SendLog.send_type == 0
+        ).scalar() or 0
         
-        email_you_send = int(send_log_counts.main_emails or 0)
-        first_reminder_send = int(send_log_counts.first_reminder or 0)
-        second_reminder_send = int(send_log_counts.second_reminder or 0)
-        third_reminder_send = int(send_log_counts.third_reminder or 0)
+        # Count first reminder sent (send_type = 1)
+        first_reminder_send = db.query(func.count(SendLog.id)).filter(
+            SendLog.user_email == user_email,
+            SendLog.send_type == 1
+        ).scalar() or 0
+        
+        # Count second reminder sent (send_type = 2)
+        second_reminder_send = db.query(func.count(SendLog.id)).filter(
+            SendLog.user_email == user_email,
+            SendLog.send_type == 2
+        ).scalar() or 0
+        
+        # Count third reminder sent (send_type = 3)
+        third_reminder_send = db.query(func.count(SendLog.id)).filter(
+            SendLog.user_email == user_email,
+            SendLog.send_type == 3
+        ).scalar() or 0
         
         # Count emails answered (contact_status = 3 means replied)
         number_of_email_professor_answered = db.query(func.count(ProfessorContact.id)).filter(

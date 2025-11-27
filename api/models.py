@@ -165,19 +165,6 @@ class UserResponse(BaseModel):
     profile_image: Optional[str]
 
 
-class LoginRequest(BaseModel):
-    """Login request payload"""
-    email: EmailStr
-    password: str
-
-
-class LoginResponse(BaseModel):
-    """Login response"""
-    email: EmailStr
-    display_name: Optional[str] = None
-    message: str = "Login successful"
-
-
 # Generic Response Models
 class MessageResponse(BaseModel):
     """Generic message response"""

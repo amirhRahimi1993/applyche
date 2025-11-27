@@ -39,7 +39,7 @@ async def create_email_template(
             )
             db.add(user)
             db.flush()
-        
+        print("user created {user}".format(user=user))
         db_template = EmailTemplate(
             user_email=template.user_email,
             template_body=template.template_body,
@@ -47,6 +47,7 @@ async def create_email_template(
             subject=template.subject
         )
         db.add(db_template)
+        print("db template is {template}".format(template=db_template))
         db.flush()  # Get the ID without committing
         
         # Add template files if provided
@@ -100,67 +101,6 @@ async def create_email_template(
         # Log full error for debugging
         print(f"Error creating template: {error_details}")
         raise HTTPException(status_code=500, detail=f"Error creating template: {str(e)}")
-
-
-@router.get("/{user_email}", response_model=List[EmailTemplateResponse])
-async def get_email_templates(user_email: str, db: Session = Depends(get_db)):
-    """
-    Get all email templates for a user
-    """
-    try:
-        # Use joinedload to eagerly load template_files relationship (prevents N+1 queries)
-        templates = db.query(EmailTemplate).options(
-            joinedload(EmailTemplate.template_files)
-        ).filter(
-            EmailTemplate.user_email == user_email
-        ).order_by(EmailTemplate.created_at.desc()).all()
-        
-        return [
-            EmailTemplateResponse(
-                id=t.id,
-                user_email=t.user_email,
-                template_body=t.template_body,
-                template_type=t.template_type,
-                subject=t.subject,
-                created_at=t.created_at,
-                file_paths=[tf.file_path for tf in t.template_files]
-            )
-            for t in templates
-        ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching templates: {str(e)}")
-
-
-@router.get("/{user_email}/{template_id}", response_model=EmailTemplateResponse)
-async def get_email_template(user_email: str, template_id: int, db: Session = Depends(get_db)):
-    """
-    Get a specific email template
-    """
-    try:
-        # Use joinedload to eagerly load template_files relationship
-        template = db.query(EmailTemplate).options(
-            joinedload(EmailTemplate.template_files)
-        ).filter(
-            EmailTemplate.id == template_id,
-            EmailTemplate.user_email == user_email
-        ).first()
-        
-        if not template:
-            raise HTTPException(status_code=404, detail="Template not found")
-        
-        return EmailTemplateResponse(
-            id=template.id,
-            user_email=template.user_email,
-            template_body=template.template_body,
-            template_type=template.template_type,
-            subject=template.subject,
-            created_at=template.created_at,
-            file_paths=[tf.file_path for tf in template.template_files]
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching template: {str(e)}")
 
 
 @router.put("/{template_id}", response_model=EmailTemplateResponse)
@@ -333,4 +273,67 @@ async def get_templates_by_types(
         
         return templates
     except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching templates: {str(e)}")
+
+
+@router.get("/{user_email}/{template_id}", response_model=EmailTemplateResponse)
+async def get_email_template(user_email: str, template_id: int, db: Session = Depends(get_db)):
+    """
+    Get a specific email template
+    """
+    try:
+        # Use joinedload to eagerly load template_files relationship
+        template = db.query(EmailTemplate).options(
+            joinedload(EmailTemplate.template_files)
+        ).filter(
+            EmailTemplate.id == template_id,
+            EmailTemplate.user_email == user_email
+        ).first()
+        
+        if not template:
+            raise HTTPException(status_code=404, detail="Template not found")
+        
+        return EmailTemplateResponse(
+            id=template.id,
+            user_email=template.user_email,
+            template_body=template.template_body,
+            template_type=template.template_type,
+            subject=template.subject,
+            created_at=template.created_at,
+            file_paths=[tf.file_path for tf in template.template_files]
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching template: {str(e)}")
+
+
+@router.get("/{user_email}", response_model=List[EmailTemplateResponse])
+async def get_email_templates(user_email: str, db: Session = Depends(get_db)):
+    """
+    Get all email templates for a user
+    """
+    try:
+        # Use joinedload to eagerly load template_files relationship (prevents N+1 queries)
+        print("get email templates is started")
+        templates = db.query(EmailTemplate).options(
+            joinedload(EmailTemplate.template_files)
+        ).filter(
+            EmailTemplate.user_email == user_email
+        ).order_by(EmailTemplate.created_at.desc()).all()
+        print("email templates {email_templates}".format(email_templates=templates))
+        return [
+            EmailTemplateResponse(
+                id=t.id,
+                user_email=t.user_email,
+                template_body=t.template_body,
+                template_type=t.template_type,
+                subject=t.subject,
+                created_at=t.created_at,
+                file_paths=[tf.file_path for tf in t.template_files]
+            )
+            for t in templates
+        ]
+    except Exception as e:
+        print("error")
         raise HTTPException(status_code=500, detail=f"Error fetching templates: {str(e)}")

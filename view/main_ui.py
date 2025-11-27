@@ -317,6 +317,9 @@ class MyWindow(QtWidgets.QMainWindow):
     def __btn_page_email_template(self):
         self._set_active_nav(self.btn_email_template, "Email Templates", self.page_email_template)
         self.stacked_content.setCurrentWidget(self.page_email_template)
+        # Load templates from database when user clicks the button
+        if hasattr(self, 'email_Temp') and self.email_Temp:
+            self.email_Temp.load_templates_from_database()
 
     def btn_page_expriences(self):
         self._set_active_nav(self.btn_expriences, "Experiences", self.page_write_your_exprience)
@@ -888,6 +891,170 @@ class EmailEditor(QtCore.QObject):
             if not isinstance(e, (requests.exceptions.RequestException, requests.exceptions.HTTPError)):
                 print(f"Info: Could not load templates from database: {type(e).__name__}")
             # Don't try fallback if connection failed - it will just fail again
+
+    def load_templates_from_database(self):
+        """
+        Public method to load templates from database when button is clicked.
+        Fetches templates from email_templates table and populates the appropriate text editors
+        based on template_type:
+        - template_type 0 → txt_main_subject and txt_main_mail
+        - template_type 1 → txt_first_reminder
+        - template_type 2 → txt_second_reminder
+        - template_type 3 → txt_third_reminder
+        
+        HTML content is preserved with formatting (bold, italic, links) using QTextEdit's setHtml().
+        """
+        if not self.api_client:
+            # Try to initialize API client if not available
+            try:
+                self.api_client = ApplyCheAPIClient("http://localhost:8000", timeout=3)
+            except Exception as exc:
+                QtWidgets.QMessageBox.warning(
+                    None,
+                    "API Not Available",
+                    f"Cannot load templates: API client not available.\n{str(exc)}"
+                )
+                return
+        
+        # Check if API is available
+        try:
+            if not self.api_client.is_available():
+                QtWidgets.QMessageBox.warning(
+                    None,
+                    "API Server Not Running",
+                    "Cannot load templates: FastAPI server is not running.\n"
+                    "Please start the server: python -m uvicorn api.main:app --reload"
+                )
+                return
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(
+                None,
+                "Connection Error",
+                f"Cannot connect to API server.\n{str(e)}"
+            )
+            return
+        
+        # Template type mapping: 0=main, 1=first_reminder, 2=second_reminder, 3=third_reminder
+        template_mapping = {
+            0: ("main_template", self.txt_main_mail, self.txt_main_subject),
+            1: ("first_reminder", self.txt_first_reminder, None),
+            2: ("second_reminder", self.txt_second_reminder, None),
+            3: ("third_reminder", self.txt_third_reminder, None)
+        }
+        
+        try:
+            # Fetch all templates at once (types 0, 1, 2, 3)
+            template_types = [0, 1, 2, 3]
+            templates = self.api_client.get_templates_by_types(self.user_email, template_types)
+            
+            if not templates:
+                QtWidgets.QMessageBox.information(
+                    None,
+                    "No Templates Found",
+                    "No email templates found in the database for your account."
+                )
+                return
+            
+            # Process each template based on template_type
+            templates_loaded = 0
+            for template in templates:
+                template_type = template.get("template_type")
+                template_key, editor, subject_field = template_mapping.get(template_type, (None, None, None))
+                
+                if not template_key or not editor:
+                    continue
+                
+                # Store template ID for updates
+                self.template_ids[template_key] = template.get("id")
+                
+                # Load HTML content into editor (QTextEdit preserves HTML formatting)
+                template_body = template.get("template_body", "")
+                if editor and template_body:
+                    editor.setHtml(template_body)
+                    templates_loaded += 1
+                
+                # Load subject for main template (template_type 0)
+                if template_type == 0 and subject_field and self.txt_main_subject:
+                    subject = template.get("subject", "")
+                    if subject:
+                        self.txt_main_subject.setText(subject)
+                
+                # Load file paths and create attachment chips
+                file_paths = template.get("file_paths", [])
+                if file_paths and editor:
+                    # Clear existing files for this editor
+                    if editor in self.uploaded_files:
+                        # Remove existing attachment chips
+                        container, chip_area, _ = self.attachment_areas.get(editor, (None, None, None))
+                        if container and chip_area:
+                            # Clear all existing chips
+                            while chip_area.layout().count():
+                                item = chip_area.layout().takeAt(0)
+                                if item.widget():
+                                    item.widget().deleteLater()
+                        
+                        self.uploaded_files[editor] = []
+                    
+                    # Add files from database
+                    for file_path in file_paths:
+                        if os.path.exists(file_path):
+                            file_name = os.path.basename(file_path)
+                            file_size = os.path.getsize(file_path)
+                            self.uploaded_files[editor].append(file_path)
+                            
+                            # Create attachment chip
+                            container, chip_area, _ = self.attachment_areas.get(editor, (None, None, None))
+                            if container and chip_area:
+                                chip = self._create_attachment_chip(file_name, file_path, file_size, editor)
+                                chip_area.layout().addWidget(chip)
+                                container.show()
+                    
+                    # Update attachment summary
+                    self._update_attachment_summary(editor)
+            
+            # Show success message
+            if templates_loaded > 0:
+                QtWidgets.QMessageBox.information(
+                    None,
+                    "Templates Loaded",
+                    f"Successfully loaded {templates_loaded} template(s) from the database.\n\n"
+                    f"Formatting (bold, italic, links) has been preserved."
+                )
+            else:
+                QtWidgets.QMessageBox.warning(
+                    None,
+                    "No Content",
+                    "Templates were found but had no content to load."
+                )
+                
+        except requests.exceptions.HTTPError as e:
+            error_msg = "Error loading templates from database."
+            if e.response is not None:
+                try:
+                    detail = e.response.json()
+                    if isinstance(detail, dict) and detail.get("detail"):
+                        error_msg = detail["detail"]
+                except ValueError:
+                    pass
+            QtWidgets.QMessageBox.critical(
+                None,
+                "API Error",
+                f"{error_msg}\n\nPlease check your connection and try again."
+            )
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            QtWidgets.QMessageBox.critical(
+                None,
+                "Connection Error",
+                f"Cannot connect to API server.\n{str(e)}\n\n"
+                f"Please ensure the FastAPI server is running:\n"
+                f"python -m uvicorn api.main:app --reload"
+            )
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(
+                None,
+                "Unexpected Error",
+                f"An error occurred while loading templates:\n{str(e)}"
+            )
 
     # ====================================================
     # =============== Bold / Italic ======================

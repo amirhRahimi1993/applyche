@@ -9,68 +9,39 @@ from datetime import datetime, timezone
 class ApplyCheAPIClient:
     """Client for interacting with ApplyChe FastAPI backend"""
     
-    def __init__(self, base_url: str = "http://localhost:8000", timeout: int = 5):
+    def __init__(self, base_url: str = "http://localhost:8000"):
         self.base_url = base_url.rstrip('/')
-        self.timeout = timeout
         self.session = requests.Session()
-    
-    def is_available(self) -> bool:
-        """Check if API server is available"""
-        try:
-            response = self.session.get(f"{self.base_url}/health", timeout=2)
-            return response.status_code == 200
-        except (requests.exceptions.RequestException, requests.exceptions.Timeout):
-            return False
     
     def _get(self, endpoint: str, params: Optional[Dict] = None) -> Dict:
         """Make GET request"""
-        try:
-            response = self.session.get(f"{self.base_url}{endpoint}", params=params, timeout=self.timeout)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.HTTPError as e:
-            # Re-raise HTTPError so caller can handle it
-            raise
-        except requests.exceptions.RequestException as e:
-            # Wrap other request exceptions
-            raise
+        response = self.session.get(f"{self.base_url}{endpoint}", params=params)
+        response.raise_for_status()
+        return response.json()
     
     def _post(self, endpoint: str, data: Dict) -> Dict:
         """Make POST request"""
-        response = self.session.post(
-            f"{self.base_url}{endpoint}", json=data, timeout=self.timeout
-        )
+        response = self.session.post(f"{self.base_url}{endpoint}", json=data)
         response.raise_for_status()
         return response.json()
     
     def _put(self, endpoint: str, data: Dict) -> Dict:
         """Make PUT request"""
-        response = self.session.put(
-            f"{self.base_url}{endpoint}", json=data, timeout=self.timeout
-        )
+        response = self.session.put(f"{self.base_url}{endpoint}", json=data)
         response.raise_for_status()
         return response.json()
     
     def _patch(self, endpoint: str, data: Dict) -> Dict:
         """Make PATCH request"""
-        response = self.session.patch(
-            f"{self.base_url}{endpoint}", json=data, timeout=self.timeout
-        )
+        response = self.session.patch(f"{self.base_url}{endpoint}", json=data)
         response.raise_for_status()
         return response.json()
     
     def _delete(self, endpoint: str) -> Dict:
         """Make DELETE request"""
-        response = self.session.delete(
-            f"{self.base_url}{endpoint}", timeout=self.timeout
-        )
+        response = self.session.delete(f"{self.base_url}{endpoint}")
         response.raise_for_status()
         return response.json()
-
-    # Auth methods
-    def login(self, email: str, password: str) -> Dict:
-        """Authenticate a user and return profile details"""
-        return self._post("/api/auth/login", {"email": email, "password": password})
     
     # Dashboard methods
     def get_dashboard_stats(self, user_email: str) -> Dict:
@@ -101,8 +72,7 @@ class ApplyCheAPIClient:
                 "template_body": template_body,
                 "template_type": template_type,
                 "subject": subject
-            },
-            timeout=self.timeout,
+            }
         )
         response.raise_for_status()
         return response.json()
@@ -137,7 +107,10 @@ class ApplyCheAPIClient:
         
         url = f"{self.base_url}/api/email-templates/{template_id}?" + urlencode(params_list)
         
-        response = self.session.put(url, json=data, timeout=self.timeout)
+        response = self.session.put(
+            url,
+            json=data
+        )
         response.raise_for_status()
         return response.json()
     
@@ -149,24 +122,6 @@ class ApplyCheAPIClient:
             if e.response.status_code == 404:
                 return None
             raise
-    
-    def get_templates_by_types(self, user_email: str, template_types: List[int]) -> List[Dict]:
-        """
-        Get the most recent templates of multiple types for a user in a single API call
-        This is more efficient than making multiple separate calls
-        """
-        try:
-            types_str = ','.join(map(str, template_types))
-            return self._get(f"/api/email-templates/{user_email}/by-types", params={"template_types": types_str})
-        except requests.exceptions.HTTPError as e:
-            # Return empty list for 404 (no templates found) or 500 (server error)
-            # This allows the app to continue in offline mode
-            if e.response and e.response.status_code in (404, 500):
-                return []
-            raise
-        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
-            # Connection errors - return empty list (offline mode)
-            return []
     
     def delete_email_template(self, template_id: int, user_email: str) -> Dict:
         """Delete email template"""

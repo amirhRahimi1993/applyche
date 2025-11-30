@@ -14,6 +14,7 @@ from api.db_models import (
     EmailQueue,
     Base,
     EmailTemplate,
+    File,
     Professor,
     ProfessorContact,
     SendLog,
@@ -78,9 +79,17 @@ def create_templates(session, user_email) -> List[EmailTemplate]:
         session.add(template)
         session.flush()
 
+        file_record = File(
+            owner_email=user_email,
+            file_path=f"C:/attachments/{subject.replace(' ', '_').lower()}.pdf",
+        )
+        session.add(file_record)
+        session.flush()
+
         attachment = TemplateFile(
             email_template_id=template.id,
-            file_path=f"C:/attachments/{subject.replace(' ', '_').lower()}.pdf",
+            file_id=file_record.id,
+            file_path=file_record.file_path,
         )
         session.add(attachment)
         templates.append(template)

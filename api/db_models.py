@@ -320,10 +320,12 @@ class TemplateFile(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     email_template_id = Column(Integer, ForeignKey('email_templates.id', ondelete='CASCADE'), nullable=False)
-    file_path = Column(Text, nullable=False)
+    file_id = Column(Integer, ForeignKey('files.id', ondelete='CASCADE'), nullable=False)
+    file_path = Column(Text, nullable=True)
     
     # Relationships
     email_template = relationship('EmailTemplate', back_populates='template_files')
+    file = relationship('File', back_populates='template_links')
 
 
 # ============================================
@@ -615,4 +617,5 @@ class File(Base):
     
     # Relationships
     owner = relationship('User', back_populates='files')
+    template_links = relationship('TemplateFile', back_populates='file', cascade='all, delete-orphan')
 

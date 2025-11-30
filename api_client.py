@@ -59,10 +59,10 @@ class ApplyCheAPIClient:
         response.raise_for_status()
         return response.json()
     
-    def _delete(self, endpoint: str) -> Dict:
+    def _delete(self, endpoint: str, params: Optional[Dict] = None) -> Dict:
         """Make DELETE request"""
         response = self.session.delete(
-            f"{self.base_url}{endpoint}", timeout=self.timeout
+            f"{self.base_url}{endpoint}", params=params, timeout=self.timeout
         )
         response.raise_for_status()
         return response.json()
@@ -84,14 +84,19 @@ class ApplyCheAPIClient:
     # Email Template methods
     def create_email_template(self, user_email: str, template_body: str, 
                              template_type: int, subject: Optional[str] = None,
-                             file_paths: Optional[List[str]] = None) -> Dict:
-        """Create email template with optional file paths"""
+                             file_paths: Optional[List[str]] = None,
+                             file_ids: Optional[List[int]] = None) -> Dict:
+        """Create email template with optional file references"""
         # Build URL with query parameters for file_paths
         url = f"{self.base_url}/api/email-templates/"
-        if file_paths:
+        if file_paths or file_ids:
             # FastAPI expects query parameters as repeated keys for lists
             from urllib.parse import urlencode
-            params_list = [("file_paths", fp) for fp in file_paths]
+            params_list = []
+            if file_paths:
+                params_list.extend([("file_paths", fp) for fp in file_paths])
+            if file_ids:
+                params_list.extend([("file_ids", str(fid)) for fid in file_ids])
             url += "?" + urlencode(params_list)
         
         response = self.session.post(
@@ -119,8 +124,9 @@ class ApplyCheAPIClient:
                              template_body: Optional[str] = None,
                              template_type: Optional[int] = None,
                              subject: Optional[str] = None,
-                             file_paths: Optional[List[str]] = None) -> Dict:
-        """Update email template with optional file paths"""
+                             file_paths: Optional[List[str]] = None,
+                             file_ids: Optional[List[int]] = None) -> Dict:
+        """Update email template with optional file references"""
         data = {}
         if template_body is not None:
             data["template_body"] = template_body
@@ -134,6 +140,8 @@ class ApplyCheAPIClient:
         params_list = [("user_email", user_email)]
         if file_paths is not None:
             params_list.extend([("file_paths", fp) for fp in file_paths])
+        if file_ids is not None:
+            params_list.extend([("file_ids", str(fid)) for fid in file_ids])
         
         url = f"{self.base_url}/api/email-templates/{template_id}?" + urlencode(params_list)
         
@@ -171,6 +179,25 @@ class ApplyCheAPIClient:
     def delete_email_template(self, template_id: int, user_email: str) -> Dict:
         """Delete email template"""
         return self._delete(f"/api/email-templates/{template_id}?user_email={user_email}")
+    
+    def delete_template_file(self, file_id: int, user_email: str, template_id: Optional[int] = None) -> Dict:
+        """
+        Delete a file from template_files and optionally from files table.
+        
+        Args:
+            file_id: ID of the file to delete
+            user_email: Email of the user (for authorization)
+            template_id: Optional. If provided, only removes file from this template.
+                        If None, removes from all templates and deletes File record.
+        
+        Returns:
+            Dict with success message
+        """
+        params = {"user_email": user_email}
+        if template_id is not None:
+            params["template_id"] = template_id
+        
+        return self._delete(f"/api/email-templates/files/{file_id}", params=params)
     
     # Sending Rules methods
     def create_sending_rules(self, user_email: str, **kwargs) -> Dict:

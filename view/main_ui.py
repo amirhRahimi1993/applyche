@@ -661,7 +661,8 @@ class EmailEditor(QtCore.QObject):
                 pass
 
         # Store uploaded files per editor
-        self.uploaded_files = {}
+        self.uploaded_files = {}  # Maps editor -> list of file_paths
+        self.file_ids_map = {}  # Maps (editor, file_path) -> file_id for database files
         self.saved_templates = {}
         self.template_ids = {}  # Store template IDs for updates
         self.save_btns= {
@@ -857,25 +858,49 @@ class EmailEditor(QtCore.QObject):
                     if template_key == "main_template" and self.txt_main_subject:
                         self.txt_main_subject.setText(template.get("subject", ""))
                     
-                    # Load file paths
+                    # Load file paths and file IDs
                     file_paths = template.get("file_paths", [])
-                    if file_paths and editor:
+                    files_data = template.get("files", [])  # List of TemplateFileResponse with file_id
+                    if (file_paths or files_data) and editor:
                         # Clear existing files
                         self.uploaded_files[editor] = []
+                        # Clear file IDs for this editor
+                        self.file_ids_map = {k: v for k, v in self.file_ids_map.items() if k[0] != editor}
                         
-                        # Add files from database
-                        for file_path in file_paths:
-                            if os.path.exists(file_path):
-                                file_name = os.path.basename(file_path)
-                                file_size = os.path.getsize(file_path)
-                                self.uploaded_files[editor].append(file_path)
-                                
-                                # Create attachment chip
-                                container, chip_area, _ = self.attachment_areas.get(editor, (None, None, None))
-                                if container and chip_area:
-                                    chip = self._create_attachment_chip(file_name, file_path, file_size, editor)
-                                    chip_area.layout().addWidget(chip)
-                                    container.show()
+                        # Use files_data if available (has file_id), otherwise fall back to file_paths
+                        if files_data:
+                            for file_data in files_data:
+                                file_path = file_data.get("file_path") or file_data.get("file_path")
+                                file_id = file_data.get("file_id")
+                                if file_path and os.path.exists(file_path):
+                                    file_name = os.path.basename(file_path)
+                                    file_size = os.path.getsize(file_path)
+                                    self.uploaded_files[editor].append(file_path)
+                                    
+                                    # Store file_id mapping
+                                    if file_id:
+                                        self.file_ids_map[(editor, file_path)] = file_id
+                                    
+                                    # Create attachment chip
+                                    container, chip_area, _ = self.attachment_areas.get(editor, (None, None, None))
+                                    if container and chip_area:
+                                        chip = self._create_attachment_chip(file_name, file_path, file_size, editor, file_id)
+                                        chip_area.layout().addWidget(chip)
+                                        container.show()
+                        else:
+                            # Fallback to file_paths (no file_id available)
+                            for file_path in file_paths:
+                                if os.path.exists(file_path):
+                                    file_name = os.path.basename(file_path)
+                                    file_size = os.path.getsize(file_path)
+                                    self.uploaded_files[editor].append(file_path)
+                                    
+                                    # Create attachment chip (no file_id)
+                                    container, chip_area, _ = self.attachment_areas.get(editor, (None, None, None))
+                                    if container and chip_area:
+                                        chip = self._create_attachment_chip(file_name, file_path, file_size, editor, None)
+                                        chip_area.layout().addWidget(chip)
+                                        container.show()
                         
                         # Update attachment summary
                         self._update_attachment_summary(editor)
@@ -979,9 +1004,10 @@ class EmailEditor(QtCore.QObject):
                     if subject:
                         self.txt_main_subject.setText(subject)
                 
-                # Load file paths and create attachment chips
+                # Load file paths and file IDs
                 file_paths = template.get("file_paths", [])
-                if file_paths and editor:
+                files_data = template.get("files", [])  # List of TemplateFileResponse with file_id
+                if (file_paths or files_data) and editor:
                     # Clear existing files for this editor
                     if editor in self.uploaded_files:
                         # Remove existing attachment chips
@@ -995,19 +1021,43 @@ class EmailEditor(QtCore.QObject):
                         
                         self.uploaded_files[editor] = []
                     
-                    # Add files from database
-                    for file_path in file_paths:
-                        if os.path.exists(file_path):
-                            file_name = os.path.basename(file_path)
-                            file_size = os.path.getsize(file_path)
-                            self.uploaded_files[editor].append(file_path)
-                            
-                            # Create attachment chip
-                            container, chip_area, _ = self.attachment_areas.get(editor, (None, None, None))
-                            if container and chip_area:
-                                chip = self._create_attachment_chip(file_name, file_path, file_size, editor)
-                                chip_area.layout().addWidget(chip)
-                                container.show()
+                    # Clear file IDs for this editor
+                    self.file_ids_map = {k: v for k, v in self.file_ids_map.items() if k[0] != editor}
+                    
+                    # Use files_data if available (has file_id), otherwise fall back to file_paths
+                    if files_data:
+                        for file_data in files_data:
+                            file_path = file_data.get("file_path")
+                            file_id = file_data.get("file_id")
+                            if file_path and os.path.exists(file_path):
+                                file_name = os.path.basename(file_path)
+                                file_size = os.path.getsize(file_path)
+                                self.uploaded_files[editor].append(file_path)
+                                
+                                # Store file_id mapping
+                                if file_id:
+                                    self.file_ids_map[(editor, file_path)] = file_id
+                                
+                                # Create attachment chip
+                                container, chip_area, _ = self.attachment_areas.get(editor, (None, None, None))
+                                if container and chip_area:
+                                    chip = self._create_attachment_chip(file_name, file_path, file_size, editor, file_id)
+                                    chip_area.layout().addWidget(chip)
+                                    container.show()
+                    else:
+                        # Fallback to file_paths (no file_id available)
+                        for file_path in file_paths:
+                            if os.path.exists(file_path):
+                                file_name = os.path.basename(file_path)
+                                file_size = os.path.getsize(file_path)
+                                self.uploaded_files[editor].append(file_path)
+                                
+                                # Create attachment chip (no file_id)
+                                container, chip_area, _ = self.attachment_areas.get(editor, (None, None, None))
+                                if container and chip_area:
+                                    chip = self._create_attachment_chip(file_name, file_path, file_size, editor, None)
+                                    chip_area.layout().addWidget(chip)
+                                    container.show()
                     
                     # Update attachment summary
                     self._update_attachment_summary(editor)
@@ -1255,14 +1305,15 @@ class EmailEditor(QtCore.QObject):
             container, chip_area, _ = self.attachment_areas.get(editor, (None, None, None))
             if not container or not chip_area:
                 continue
-            chip = self._create_attachment_chip(file_name, file_path, file_size, editor)
+            # New files don't have file_id until saved to database
+            chip = self._create_attachment_chip(file_name, file_path, file_size, editor, file_id=None)
             chip_area.layout().addWidget(chip)
             container.show()
 
         self._update_attachment_summary(editor)
         editor.setFocus()
 
-    def _create_attachment_chip(self, file_name, file_path, file_size, editor):
+    def _create_attachment_chip(self, file_name, file_path, file_size, editor, file_id: Optional[int] = None):
         chip = QtWidgets.QFrame()
         chip.setStyleSheet("""
             QFrame {
@@ -1304,11 +1355,67 @@ class EmailEditor(QtCore.QObject):
         chip.mouseDoubleClickEvent = open_file
 
         def remove_file():
+            """Remove file from UI and database"""
+            # Get template_id for this editor
+            template_key = None
+            for key, (_, ed) in {
+                "main_template": (0, self.txt_main_mail),
+                "first_reminder": (1, self.txt_first_reminder),
+                "second_reminder": (2, self.txt_second_reminder),
+                "third_reminder": (3, self.txt_third_reminder)
+            }.items():
+                if ed == editor:
+                    template_key = key
+                    break
+            
+            template_id = self.template_ids.get(template_key) if template_key else None
+            
+            # Remove from UI first
             chip.setParent(None)
             chip.deleteLater()
             if file_path in self.uploaded_files[editor]:
                 self.uploaded_files[editor].remove(file_path)
+            
+            # Remove from file_ids_map
+            if (editor, file_path) in self.file_ids_map:
+                del self.file_ids_map[(editor, file_path)]
+            
             self._update_attachment_summary(editor)
+            
+            # Delete from database if file_id exists and API is available
+            if file_id and self.api_client:
+                try:
+                    if self.api_client.is_available():
+                        # Delete file from database (removes from template and deletes File if not used elsewhere)
+                        self.api_client.delete_template_file(
+                            file_id=file_id,
+                            user_email=self.user_email,
+                            template_id=template_id  # Only remove from this template
+                        )
+                        print(f"File {file_id} deleted from database")
+                    else:
+                        print("API not available - file removed from UI only")
+                except requests.exceptions.HTTPError as e:
+                    error_msg = f"Failed to delete file from database"
+                    if e.response is not None:
+                        try:
+                            detail = e.response.json()
+                            if isinstance(detail, dict) and detail.get("detail"):
+                                error_msg = detail["detail"]
+                        except ValueError:
+                            pass
+                    QtWidgets.QMessageBox.warning(
+                        editor,
+                        "Delete Warning",
+                        f"{error_msg}\n\nFile removed from UI but may still exist in database."
+                    )
+                except Exception as e:
+                    print(f"Error deleting file from database: {e}")
+                    QtWidgets.QMessageBox.warning(
+                        editor,
+                        "Delete Warning",
+                        f"File removed from UI but failed to delete from database:\n{str(e)}"
+                    )
 
         remove_btn.clicked.connect(remove_file)
         return chip
@@ -1370,7 +1477,8 @@ class EmailEditor(QtCore.QObject):
                         file_size = os.path.getsize(f)
                         self.uploaded_files[editor].append(f)
                         container, chip_area, _ = self.attachment_areas.get(editor, (None, None, None))
-                        chip = self._create_attachment_chip(file_name, f, file_size, editor)
+                        # New files from drag-and-drop don't have file_id until saved
+                        chip = self._create_attachment_chip(file_name, f, file_size, editor, file_id=None)
                         chip_area.layout().addWidget(chip)
                         container.show()
                     self._update_attachment_summary(editor)

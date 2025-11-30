@@ -3,7 +3,7 @@ Pydantic models for request/response schemas
 """
 from typing import Optional, List, Dict, Any
 from datetime import datetime, time
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 # Dashboard Models
@@ -26,6 +26,14 @@ class EmailTemplateCreate(BaseModel):
     subject: Optional[str] = None
 
 
+class TemplateFileResponse(BaseModel):
+    """Template file response"""
+    id: int
+    email_template_id: int
+    file_id: int
+    file_path: Optional[str]
+
+
 class EmailTemplateResponse(BaseModel):
     """Email template response"""
     id: int
@@ -34,14 +42,8 @@ class EmailTemplateResponse(BaseModel):
     template_type: int
     subject: Optional[str]
     created_at: datetime
-    file_paths: Optional[List[str]] = []  # List of file paths from template_files
-
-
-class TemplateFileResponse(BaseModel):
-    """Template file response"""
-    id: int
-    email_template_id: int
-    file_path: str
+    file_paths: List[str] = Field(default_factory=list)
+    files: List[TemplateFileResponse] = Field(default_factory=list)
 
 
 class EmailTemplateUpdate(BaseModel):

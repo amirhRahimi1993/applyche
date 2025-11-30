@@ -582,9 +582,13 @@ class ProfessorList(Base):
     __tablename__ = 'professor_lists'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_email = Column(CITEXT, ForeignKey('users.email', ondelete='CASCADE'), nullable=False)
+    user_email = Column(CITEXT, ForeignKey('users.email', ondelete='CASCADE'), nullable=False, unique=True)
     file_path = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+    __table_args__ = (
+        UniqueConstraint('user_email', name='uq_professor_list_user'),
+    )
     
     # Relationships
     user = relationship('User', back_populates='professor_lists')

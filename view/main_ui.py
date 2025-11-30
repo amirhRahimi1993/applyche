@@ -275,7 +275,12 @@ class MyWindow(QtWidgets.QMainWindow):
             user_email=self.user_email,
             api_client=self.api_client,
         )
-        self.professorList = Professor_lists(self.page_professor_list, self.middle_info_pass)
+        self.professorList = Professor_lists(
+            self.page_professor_list,
+            self.middle_info_pass,
+            user_email=self.user_email,
+            api_client=self.api_client
+        )
         self.email_prep = Prepare_send_mail(self.page_prepare_send_email, self.middle_info_pass)
 
         self.statics = Statics(self.page_statics)
@@ -320,6 +325,9 @@ class MyWindow(QtWidgets.QMainWindow):
         # Load templates from database when user clicks the button
         if hasattr(self, 'email_Temp') and self.email_Temp:
             self.email_Temp.load_templates_from_database()
+        # Load professor list and show in table when email template page is opened
+        if hasattr(self, 'professorList') and self.professorList:
+            self.professorList.load_professor_list_from_db()
 
     def btn_page_expriences(self):
         self._set_active_nav(self.btn_expriences, "Experiences", self.page_write_your_exprience)
@@ -340,6 +348,9 @@ class MyWindow(QtWidgets.QMainWindow):
     def btn_page_professor_list(self):
         self._set_active_nav(self.btn_professor_list, "Professors", self.page_professor_list)
         self.stacked_content.setCurrentWidget(self.page_professor_list)
+        # Load professor list from database when page is shown
+        if hasattr(self, 'professorList') and self.professorList:
+            self.professorList.load_professor_list_from_db()
 
     def btn_page_setting(self):
         self._set_active_nav(None, "Settings", self.page_settings)
@@ -1764,10 +1775,17 @@ class FetchUniversityDialog(QDialog):
         super().__init__()
         uic.loadUi("Fetch_university.ui", self)
 class Professor_lists():
-    def __init__(self,widget,middle_info_pass):
+    def __init__(self, widget, middle_info_pass, user_email: str = "", api_client: Optional[ApplyCheAPIClient] = None):
         self.middle_info_pass = middle_info_pass
+        self.user_email = user_email
+        self.api_client = api_client
+        
+        # Initialize file manager
+        from utility.file_manager import FileManager
+        self.file_manager = FileManager()
+        
         # This assumes you've already loaded your UI with tbl_professors_list and btn_local_upload
-        self.widget = widget.findChild(QtWidgets.QWidget,"page_professors")
+        self.widget = widget.findChild(QtWidgets.QWidget, "page_professors")
         self.tbl_professors_list: QtWidgets.QTableWidget = self.widget.findChild(QtWidgets.QTableWidget, "tbl_professors_list")
         self.btn_local_upload: QtWidgets.QPushButton = self.widget.findChild(QtWidgets.QPushButton, "btn_local_upload")
         self.btn_download_from_applyche: QtWidgets.QPushButton = self.widget.findChild(QtWidgets.QPushButton, "btn_download_from_applyche")
@@ -1775,11 +1793,53 @@ class Professor_lists():
         # Connect button to upload function
         self.btn_local_upload.clicked.connect(self.upload_data_from_local)
         self.btn_download_from_applyche.clicked.connect(self.popup_the_download_list)
+        
+        # Load professor list from database if available
+        self.load_professor_list_from_db()
 
     def popup_the_download_list(self):
         dialog = FetchUniversityDialog()
         dialog.exec()
+    
+    def load_professor_list_from_db(self):
+        """Load professor list from database and display in table"""
+        if not self.user_email or not self.api_client:
+            return
+        
+        try:
+            if not self.api_client.is_available():
+                return  # API not available, skip loading
+            
+            professor_list = self.api_client.get_professor_list(self.user_email)
+            if professor_list and professor_list.get("file_path"):
+                file_path = professor_list["file_path"]
+                
+                # Check if file exists
+                if os.path.exists(file_path):
+                    try:
+                        P = ProfessorsController(file_path)
+                        values = P.send_professor_info()
+                        df = values["df"]
+                        headers = values["header"]
+                        nans = values["nans"]
+                        self.middle_info_pass.store_data("professor_list", df)
+                        
+                        df.columns = df.columns.str.strip().str.lower()
+                        self._populate_table(df)
+                    except Exception as e:
+                        print(f"Error loading professor list from {file_path}: {e}")
+        except Exception as e:
+            print(f"Error loading professor list from database: {e}")
+    
     def upload_data_from_local(self):
+        """Upload CSV/Excel file with file size limits, folder cleanup, and rate limiting"""
+        if not self.user_email:
+            QMessageBox.warning(
+                self.widget,
+                "User Not Set",
+                "User email is not set. Cannot upload file."
+            )
+            return
 
         # Let user choose file
         file_path, _ = QFileDialog.getOpenFileName(
@@ -1791,22 +1851,106 @@ class Professor_lists():
         if not file_path:  # If user cancels
             return
 
+        # Check rate limit
+        allowed, rate_msg = self.file_manager.check_rate_limit(self.user_email)
+        if not allowed:
+            QMessageBox.warning(
+                self.widget,
+                "Upload Limit Reached",
+                rate_msg
+            )
+            return
+
+        # Check file size
+        valid_size, size_msg = self.file_manager.check_file_size(file_path)
+        if not valid_size:
+            QMessageBox.warning(
+                self.widget,
+                "File Too Large",
+                size_msg
+            )
+            return
+
+        # Process file first to validate it
         try:
             P = ProfessorsController(file_path)
             values = P.send_professor_info()
-            df= values["df"]
-            headers= values["header"]
+            df = values["df"]
+            headers = values["header"]
             nans = values["nans"]
-            self.middle_info_pass.store_data("professor_list",df)
         except Exception as e:
-            QMessageBox.critical(self.widget, "Error", f"Failed to read file:\n{str(e)}")
+            QMessageBox.critical(
+                self.widget,
+                "Error",
+                f"Failed to read file:\n{str(e)}"
+            )
             return
+
+        # Show warnings for empty columns
         for k in nans.keys():
-            QMessageBox.warning(self.widget,"Some columns are empty",f"I have find {len(nans[k])} empty value in {k} column it may affect on your email process!!")
+            QMessageBox.warning(
+                self.widget,
+                "Some columns are empty",
+                f"I have found {len(nans[k])} empty value(s) in '{k}' column. This may affect your email process!!"
+            )
+
+        # Save file to uploaded_folders/{user_email}/professor_list/
+        success, save_msg, saved_path = self.file_manager.save_file(
+            source_path=file_path,
+            user_email=self.user_email,
+            subfolder="professor_list"
+        )
+
+        if not success:
+            QMessageBox.warning(
+                self.widget,
+                "Save Failed",
+                save_msg
+            )
+            return
+
+        # Save to database via API
+        db_saved = False
+        if self.api_client:
+            try:
+                if self.api_client.is_available():
+                    # Upsert professor list (one row per user)
+                    self.api_client.upsert_professor_list(
+                        user_email=self.user_email,
+                        file_path=str(saved_path)
+                    )
+                    db_saved = True
+                else:
+                    print("API not available - file saved locally but not to database")
+            except Exception as e:
+                print(f"Error saving to database: {e}")
+                QMessageBox.warning(
+                    self.widget,
+                    "Database Save Warning",
+                    f"File saved locally but failed to save to database:\n{str(e)}"
+                )
+
+        # Store in memory for immediate use
         df.columns = df.columns.str.strip().str.lower()
+        self.middle_info_pass.store_data("professor_list", df)
 
         # Populate table
         self._populate_table(df)
+
+        # Show success message
+        stats = self.file_manager.get_user_upload_stats(self.user_email)
+        success_msg = f"✅ File uploaded successfully!\n\n"
+        success_msg += f"Saved to: {saved_path}\n"
+        success_msg += f"File size: {size_msg}\n"
+        if db_saved:
+            success_msg += f"✅ Saved to database\n"
+        success_msg += f"\nUpload stats: {stats['today_count']}/{stats['max_per_day']} uploads today"
+        
+        QMessageBox.information(
+            self.widget,
+            "Upload Successful",
+            success_msg
+        )
 
     def _populate_table(self, df: pd.DataFrame):
         self.tbl_professors_list.clear()

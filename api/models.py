@@ -187,3 +187,18 @@ class MessageResponse(BaseModel):
     success: bool = True
 
 
+# Professor List Models
+class ProfessorListCreate(BaseModel):
+    """Create/update professor list request"""
+    user_email: EmailStr
+    file_path: str
+
+
+class ProfessorListResponse(BaseModel):
+    """Professor list response"""
+    id: int
+    user_email: str
+    file_path: str
+    created_at: datetime
+
+

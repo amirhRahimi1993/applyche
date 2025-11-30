@@ -248,6 +248,27 @@ class ApplyCheAPIClient:
             params["send_type"] = send_type
         return self._get(f"/api/email-queue/logs/{user_email}", params=params)
     
+    # Professor Lists methods
+    def upsert_professor_list(self, user_email: str, file_path: str) -> Dict:
+        """Create or update professor list for user (one row per user)"""
+        return self._post("/api/professor-lists/", {
+            "user_email": user_email,
+            "file_path": file_path
+        })
+    
+    def get_professor_list(self, user_email: str) -> Optional[Dict]:
+        """Get professor list for user"""
+        try:
+            return self._get(f"/api/professor-lists/{user_email}")
+        except requests.exceptions.HTTPError as e:
+            if e.response and e.response.status_code == 404:
+                return None
+            raise
+    
+    def delete_professor_list(self, user_email: str) -> Dict:
+        """Delete professor list for user"""
+        return self._delete(f"/api/professor-lists/{user_email}")
+    
     # Health check
     def health_check(self) -> Dict:
         """Check API health"""

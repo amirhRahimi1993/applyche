@@ -676,6 +676,10 @@ class EmailEditor(QtCore.QObject):
         self.file_ids_map = {}  # Maps (editor, file_path) -> file_id for database files
         self.saved_templates = {}
         self.template_ids = {}  # Store template IDs for updates
+        
+        # Initialize file manager for email attachments
+        from utility.file_manager import FileManager
+        self.file_manager = FileManager()
         self.save_btns= {
             "main_template":self.stacked_widget.findChild(QtWidgets.QPushButton, "btn_save_main_temp"),
             "first_reminder": self.stacked_widget.findChild(QtWidgets.QPushButton, "btn_save_first_temp"),
@@ -1040,25 +1044,29 @@ class EmailEditor(QtCore.QObject):
                         for file_data in files_data:
                             file_path = file_data.get("file_path")
                             file_id = file_data.get("file_id")
-                            if file_path and os.path.exists(file_path):
-                                file_name = os.path.basename(file_path)
-                                file_size = os.path.getsize(file_path)
-                                self.uploaded_files[editor].append(file_path)
-                                
-                                # Store file_id mapping
-                                if file_id:
-                                    self.file_ids_map[(editor, file_path)] = file_id
-                                
-                                # Create attachment chip
-                                container, chip_area, _ = self.attachment_areas.get(editor, (None, None, None))
-                                if container and chip_area:
-                                    chip = self._create_attachment_chip(file_name, file_path, file_size, editor, file_id)
-                                    chip_area.layout().addWidget(chip)
-                                    container.show()
+                            if file_path:
+                                # Check if file exists (may be on server)
+                                if os.path.exists(file_path):
+                                    file_name = os.path.basename(file_path)
+                                    file_size = os.path.getsize(file_path)
+                                    self.uploaded_files[editor].append(file_path)
+                                    
+                                    # Store file_id mapping
+                                    if file_id:
+                                        self.file_ids_map[(editor, file_path)] = file_id
+                                    
+                                    # Create attachment chip
+                                    container, chip_area, _ = self.attachment_areas.get(editor, (None, None, None))
+                                    if container and chip_area:
+                                        chip = self._create_attachment_chip(file_name, file_path, file_size, editor, file_id)
+                                        chip_area.layout().addWidget(chip)
+                                        container.show()
+                                else:
+                                    print(f"Warning: File not found: {file_path}")
                     else:
                         # Fallback to file_paths (no file_id available)
                         for file_path in file_paths:
-                            if os.path.exists(file_path):
+                            if file_path and os.path.exists(file_path):
                                 file_name = os.path.basename(file_path)
                                 file_size = os.path.getsize(file_path)
                                 self.uploaded_files[editor].append(file_path)
@@ -1164,6 +1172,28 @@ class EmailEditor(QtCore.QObject):
         html_content = editor.toHtml()
         file_paths = self.uploaded_files.get(editor, [])
         
+        # Ensure all files are saved to server (convert local paths to server paths if needed)
+        server_file_paths = []
+        for file_path in file_paths:
+            # Check if file is already in server location
+            if "uploaded_folders" in str(file_path) and "email_file" in str(file_path):
+                server_file_paths.append(str(file_path))
+            else:
+                # File is local, need to save to server
+                success, msg, saved_path = self.file_manager.save_email_file(
+                    source_path=str(file_path),
+                    user_email=self.user_email,
+                    existing_files=server_file_paths
+                )
+                if success and saved_path:
+                    server_file_paths.append(str(saved_path))
+                else:
+                    QtWidgets.QMessageBox.warning(
+                        editor,
+                        "Save Warning",
+                        f"Could not save {os.path.basename(file_path)} to server:\n{msg}"
+                    )
+        
         # Get subject for main template
         subject = None
         if template_key == "main_template" and self.txt_main_subject:
@@ -1173,7 +1203,7 @@ class EmailEditor(QtCore.QObject):
         # Save to local storage (for backward compatibility)
         self.saved_templates[template_key] = {
             "html": html_content,
-            "attachments": file_paths.copy()
+            "attachments": server_file_paths.copy()
         }
         self.middle_info_pass.store_data(template_key, self.saved_templates[template_key])
         
@@ -1201,7 +1231,7 @@ class EmailEditor(QtCore.QObject):
                             template_body=html_content,
                             template_type=template_type,
                             subject=subject,
-                            file_paths=file_paths
+                            file_paths=server_file_paths  # Use server paths
                         )
                     else:
                         # Create new template
@@ -1210,7 +1240,7 @@ class EmailEditor(QtCore.QObject):
                             template_body=html_content,
                             template_type=template_type,
                             subject=subject,
-                            file_paths=file_paths
+                            file_paths=server_file_paths  # Use server paths
                         )
                         # Store the new template ID
                         self.template_ids[template_key] = result.get("id")
@@ -1232,13 +1262,18 @@ class EmailEditor(QtCore.QObject):
                     f"Please ensure the FastAPI server is running on http://localhost:8000"
                 )
         
+        # Calculate total size for display
+        total_size = sum(os.path.getsize(f) for f in server_file_paths if os.path.exists(f))
+        total_size_mb = total_size / (1024 * 1024)
+        
         # Show success message
         if api_saved:
             QtWidgets.QMessageBox.information(
                 editor,
                 "Template Saved",
                 f"✅ {template_key.replace('_', ' ').title()} has been saved successfully to database.\n\n"
-                f"Attachments: {len(file_paths)} file(s)",
+                f"Attachments: {len(server_file_paths)} file(s)\n"
+                f"Total size: {total_size_mb:.2f} MB / 60 MB",
             )
         else:
             # Saved locally only
@@ -1246,7 +1281,8 @@ class EmailEditor(QtCore.QObject):
                 editor,
                 "Template Saved Locally",
                 f"✅ {template_key.replace('_', ' ').title()} has been saved locally.\n\n"
-                f"Attachments: {len(file_paths)} file(s)\n\n"
+                f"Attachments: {len(server_file_paths)} file(s)\n"
+                f"Total size: {total_size_mb:.2f} MB / 60 MB\n\n"
                 f"Note: FastAPI server is not running. To save to database, please start the API server:\n"
                 f"  python -m uvicorn api.main:app --reload",
             )
@@ -1303,23 +1339,60 @@ class EmailEditor(QtCore.QObject):
     # =============== Upload Files (Multi, Gmail-style) ===
     # ====================================================
     def insert_file_attachment(self, editor):
+        """Upload and attach files to email template with size limits"""
         file_paths, _ = QtWidgets.QFileDialog.getOpenFileNames(editor, "Attach Files", "", "All Files (*)")
         if not file_paths:
             return
 
+        # Get existing files for this editor to check total size
+        existing_files = self.uploaded_files.get(editor, [])
+        
+        failed_files = []
         for file_path in file_paths:
             if not file_path:
                 continue
-            file_name = os.path.basename(file_path)
-            file_size = os.path.getsize(file_path)
-            self.uploaded_files[editor].append(file_path)
+            
+            # Save file to server with size checks
+            success, message, saved_path = self.file_manager.save_email_file(
+                source_path=file_path,
+                user_email=self.user_email,
+                existing_files=existing_files
+            )
+            
+            if not success:
+                failed_files.append((os.path.basename(file_path), message))
+                continue
+            
+            # File saved successfully, add to editor
+            file_name = os.path.basename(saved_path)
+            file_size = os.path.getsize(saved_path)
+            self.uploaded_files[editor].append(str(saved_path))
+            existing_files.append(str(saved_path))  # Update for next iteration
+            
             container, chip_area, _ = self.attachment_areas.get(editor, (None, None, None))
             if not container or not chip_area:
                 continue
+            
             # New files don't have file_id until saved to database
-            chip = self._create_attachment_chip(file_name, file_path, file_size, editor, file_id=None)
+            chip = self._create_attachment_chip(file_name, str(saved_path), file_size, editor, file_id=None)
             chip_area.layout().addWidget(chip)
             container.show()
+
+        # Show results
+        if failed_files:
+            error_msg = "Some files could not be attached:\n\n"
+            for filename, reason in failed_files:
+                error_msg += f"• {filename}: {reason}\n"
+            QtWidgets.QMessageBox.warning(editor, "Upload Warning", error_msg)
+        
+        if len(failed_files) < len(file_paths):
+            # Some files succeeded
+            success_count = len(file_paths) - len(failed_files)
+            QtWidgets.QMessageBox.information(
+                editor,
+                "Files Attached",
+                f"Successfully attached {success_count} file(s)."
+            )
 
         self._update_attachment_summary(editor)
         editor.setFocus()
@@ -1366,7 +1439,7 @@ class EmailEditor(QtCore.QObject):
         chip.mouseDoubleClickEvent = open_file
 
         def remove_file():
-            """Remove file from UI and database"""
+            """Remove file from UI, move to deleted folder, and update database"""
             # Get template_id for this editor
             template_key = None
             for key, (_, ed) in {
@@ -1392,6 +1465,17 @@ class EmailEditor(QtCore.QObject):
                 del self.file_ids_map[(editor, file_path)]
             
             self._update_attachment_summary(editor)
+            
+            # Move file to deleted folder instead of permanent deletion
+            if os.path.exists(file_path):
+                success, msg, deleted_path = self.file_manager.move_to_deleted(
+                    file_path=file_path,
+                    user_email=self.user_email
+                )
+                if success:
+                    print(f"File moved to deleted folder: {deleted_path}")
+                else:
+                    print(f"Warning: {msg}")
             
             # Delete from database if file_id exists and API is available
             if file_id and self.api_client:

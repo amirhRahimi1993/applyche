@@ -107,7 +107,7 @@
             <x>11</x>
             <y>101</y>
             <width>225</width>
-            <height>654</height>
+            <height>770</height>
            </rect>
           </property>
           <layout class="QVBoxLayout" name="verticalLayout_3">
@@ -122,9 +122,9 @@
                  <stylestrategy>NoAntialias</stylestrategy>
                 </font>
                </property>
-              <property name="styleSheet">
-               <string notr="true"/>
-              </property>
+               <property name="styleSheet">
+                <string notr="true"/>
+               </property>
                <property name="text">
                 <string>DashBoard</string>
                </property>
@@ -183,9 +183,9 @@
                  <bold>true</bold>
                 </font>
                </property>
-              <property name="styleSheet">
-               <string notr="true"/>
-              </property>
+               <property name="styleSheet">
+                <string notr="true"/>
+               </property>
                <property name="text">
                 <string>Professors List</string>
                </property>
@@ -215,9 +215,9 @@
                  <bold>true</bold>
                 </font>
                </property>
-              <property name="styleSheet">
-               <string notr="true"/>
-              </property>
+               <property name="styleSheet">
+                <string notr="true"/>
+               </property>
                <property name="text">
                 <string>Send Email</string>
                </property>
@@ -250,9 +250,9 @@
                <property name="layoutDirection">
                 <enum>Qt::LayoutDirection::LeftToRight</enum>
                </property>
-              <property name="styleSheet">
-               <string notr="true"/>
-              </property>
+               <property name="styleSheet">
+                <string notr="true"/>
+               </property>
                <property name="text">
                 <string>Statics</string>
                </property>
@@ -311,9 +311,9 @@
                  <bold>true</bold>
                 </font>
                </property>
-              <property name="styleSheet">
-               <string notr="true"/>
-              </property>
+               <property name="styleSheet">
+                <string notr="true"/>
+               </property>
                <property name="text">
                 <string>Results</string>
                </property>
@@ -876,7 +876,7 @@ margin-top:5;
          <string notr="true"/>
         </property>
         <property name="currentIndex">
-         <number>0</number>
+         <number>10</number>
         </property>
         <widget class="QWidget" name="page_Dashboard">
          <widget class="QWidget" name="widget_main" native="true">
@@ -2632,7 +2632,7 @@ height:25px;
            </rect>
           </property>
           <property name="currentIndex">
-           <number>0</number>
+           <number>1</number>
           </property>
           <widget class="QWidget" name="page_email_conditions">
            <widget class="QPushButton" name="btn_next_to_send">
@@ -2826,7 +2826,7 @@ height:25px;
              </item>
             </layout>
            </widget>
-           <widget class="QWidget" name="">
+           <widget class="QWidget" name="layoutWidget">
             <property name="geometry">
              <rect>
               <x>12</x>
@@ -3002,7 +3002,7 @@ height:25px;
               <x>30</x>
               <y>170</y>
               <width>831</width>
-              <height>56</height>
+              <height>111</height>
              </rect>
             </property>
             <layout class="QVBoxLayout" name="verticalLayout_13">
@@ -3030,7 +3030,7 @@ height:25px;
               <x>30</x>
               <y>90</y>
               <width>831</width>
-              <height>56</height>
+              <height>81</height>
              </rect>
             </property>
             <layout class="QVBoxLayout" name="verticalLayout_14">

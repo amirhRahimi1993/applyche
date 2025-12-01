@@ -1674,6 +1674,9 @@ class Prepare_send_mail(QtWidgets.QWidget):
 
         self.total_page = 3
         
+        # Apply modern UI/UX styling to page_email_info
+        self._apply_email_info_styles()
+        
     def load_sending_rules_from_db(self):
         """Load sending rules from database and populate UI elements"""
         if not self.user_email:
@@ -2160,6 +2163,126 @@ class Prepare_send_mail(QtWidgets.QWidget):
         else:
             self.__kill_or_continue_sending()
 
+    def _apply_email_info_styles(self):
+        """Apply modern UI/UX styling to page_email_info elements"""
+        if not self.page_email_info:
+            return
+        
+        # Style input fields (txt_email, txt_password)
+        input_style = (
+            "background-color: #1E293B; "
+            "border: 1px solid #334155; "
+            "border-radius: 10px; "
+            "padding: 12px 16px; "
+            "color: #E2E8F0; "
+            "font-size: 14px; "
+            "min-height: 20px;"
+        )
+        
+        txt_email = self.page_email_info.findChild(QtWidgets.QLineEdit, "txt_email")
+        if txt_email:
+            txt_email.setStyleSheet(input_style)
+            txt_email.setPlaceholderText("Your email address")
+        
+        txt_password = self.page_email_info.findChild(QtWidgets.QLineEdit, "txt_password")
+        if txt_password:
+            txt_password.setStyleSheet(input_style)
+            txt_password.setPlaceholderText("Your email password")
+            txt_password.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+        
+        # Style primary action button (btn_send_email - Start Sending Emails)
+        primary_button_style = (
+            "QPushButton {"
+            "background-color: #10B981; "
+            "border: none; "
+            "border-radius: 10px; "
+            "padding: 14px 24px; "
+            "font-weight: 600; "
+            "font-size: 15px; "
+            "color: #FFFFFF; "
+            "min-height: 24px;"
+            "}"
+            "QPushButton:hover {"
+            "background-color: #059669;"
+            "}"
+            "QPushButton:pressed {"
+            "background-color: #047857;"
+            "}"
+            "QPushButton:disabled {"
+            "background-color: #065F46; "
+            "color: #94A3B8;"
+            "}"
+        )
+        
+        if self.btn_send_real_mail:
+            self.btn_send_real_mail.setStyleSheet(primary_button_style)
+            self.btn_send_real_mail.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        # Style secondary action button (btn_send_test - Send Test Email)
+        secondary_button_style = (
+            "QPushButton {"
+            "background-color: #2563EB; "
+            "border: none; "
+            "border-radius: 10px; "
+            "padding: 14px 24px; "
+            "font-weight: 600; "
+            "font-size: 15px; "
+            "color: #FFFFFF; "
+            "min-height: 24px;"
+            "}"
+            "QPushButton:hover {"
+            "background-color: #1D4ED8;"
+            "}"
+            "QPushButton:pressed {"
+            "background-color: #1E40AF;"
+            "}"
+            "QPushButton:disabled {"
+            "background-color: #1E3A8A; "
+            "color: #94A3B8;"
+            "}"
+        )
+        
+        if self.btn_send_test_mail:
+            self.btn_send_test_mail.setStyleSheet(secondary_button_style)
+            self.btn_send_test_mail.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        # Style back button (btn_email_info_back)
+        back_button_style = (
+            "QPushButton {"
+            "background-color: #374151; "
+            "border: 1px solid #4B5563; "
+            "border-radius: 10px; "
+            "padding: 12px 20px; "
+            "font-weight: 500; "
+            "font-size: 14px; "
+            "color: #E5E7EB; "
+            "min-height: 20px;"
+            "}"
+            "QPushButton:hover {"
+            "background-color: #4B5563; "
+            "border-color: #6B7280;"
+            "}"
+            "QPushButton:pressed {"
+            "background-color: #1F2937;"
+            "}"
+        )
+        
+        if self.btn_email_info_back:
+            self.btn_email_info_back.setStyleSheet(back_button_style)
+            self.btn_email_info_back.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        # Style labels for better readability
+        label_style = (
+            "color: #E5E7EB; "
+            "font-size: 14px; "
+            "font-weight: 500;"
+        )
+        
+        # Find and style all QLabels in page_email_info
+        for label in self.page_email_info.findChildren(QtWidgets.QLabel):
+            if label.objectName() and "label" in label.objectName().lower():
+                label.setStyleSheet(label_style)
+    
     def __load_data_from_DB(self, id):
         """Legacy method - kept for backward compatibility"""
         # This method is no longer used - data is loaded via load_sending_rules_from_db()

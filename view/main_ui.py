@@ -30,6 +30,7 @@ from middle_wares.coordinator_sending_mails import Coordinator
 from events.event_bus import EventBus
 from middle_wares.middle_info_pass import middle_info_pass
 from api_client import ApplyCheAPIClient
+from view.ui_style_manager import UIStyleManager
 import resources
 
 
@@ -414,85 +415,63 @@ class MyWindow(QtWidgets.QMainWindow):
             self.page_title_label.setText(title)
 
     def _apply_global_styles(self):
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #0F172A;
-            }
-            #widget_main_value {
-                background-color: #0B1120;
-                border-radius: 24px;
-            }
-            #widget_content {
-                background-color: #0B1120;
-                border-radius: 24px;
-            }
-            #widget_header {
-                background-color: #0B1120;
-                border-radius: 18px;
-            }
-            #lineEdit {
-                background-color: #1F2937;
-                color: #E5E7EB;
-                border: 1px solid #374151;
-                border-radius: 14px;
-                padding: 12px 16px;
-            }
-            #btn_search_professor {
-                background-color: #2563EB;
-                color: #FFFFFF;
-                border-radius: 14px;
-                padding: 12px 26px;
-                font-weight: bold;
-            }
-            #btn_search_professor:hover {
-                background-color: #1D4ED8;
-            }
-            #btn_notification {
+        """Apply global styles using the centralized style manager"""
+        # Apply global stylesheet
+        self.setStyleSheet(UIStyleManager.get_global_stylesheet())
+        
+        # Apply additional component-specific styles
+        additional_styles = f"""
+            #widget_main_value {{
+                background-color: {UIStyleManager.COLORS['bg_primary']};
+                border-radius: {UIStyleManager.RADIUS['2xl']};
+            }}
+            #widget_content {{
+                background-color: {UIStyleManager.COLORS['bg_primary']};
+                border-radius: {UIStyleManager.RADIUS['2xl']};
+            }}
+            #widget_header {{
+                background-color: {UIStyleManager.COLORS['bg_primary']};
+                border-radius: {UIStyleManager.RADIUS['xl']};
+            }}
+            #lineEdit {{
+                {UIStyleManager.get_input_style()}
+            }}
+            #btn_search_professor {{
+                {UIStyleManager.get_button_secondary_style()}
+            }}
+            #btn_notification {{
                 background-color: transparent;
-            }
-            #widget_menu QPushButton {
-                color: #CBD5F5;
+            }}
+            #widget_menu QPushButton {{
                 background-color: transparent;
+                color: {UIStyleManager.COLORS['text_muted']};
                 border: none;
-                border-radius: 14px;
-                padding: 12px 20px;
+                border-radius: {UIStyleManager.RADIUS['lg']};
+                padding: {UIStyleManager.SPACING['md']} {UIStyleManager.SPACING['xl']};
                 text-align: left;
-                font-weight: 500;
-            }
-            #widget_menu QPushButton:hover {
+                font-weight: {UIStyleManager.FONTS['weight_medium']};
+                font-size: {UIStyleManager.FONTS['size_base']};
+            }}
+            #widget_menu QPushButton:hover {{
                 background-color: rgba(37, 99, 235, 0.15);
-            }
-            #widget_menu QPushButton[active="true"] {
-                background-color: #2563EB;
-                color: #F8FAFC;
-            }
-            QPushButton {
-                background-color: #1D4ED8;
-                color: #F8FAFC;
-                border-radius: 12px;
-                padding: 10px 18px;
-            }
-            QPushButton:disabled {
-                background-color: #1E3A8A;
-                color: #94A3B8;
-            }
-            QTextEdit {
-                background-color: #0F172A;
-                color: #F1F5F9;
-                border: 1px solid #1E293B;
-                border-radius: 14px;
-                padding: 12px;
-            }
-            QStackedWidget {
-                background-color: #020617;
-                border-radius: 18px;
-            }
-            QLabel#lbl_page_title {
-                color: #F8FAFC;
-                font-size: 22px;
-                font-weight: 600;
-            }
-        """)
+                color: {UIStyleManager.COLORS['text_primary']};
+            }}
+            #widget_menu QPushButton[active="true"] {{
+                background-color: {UIStyleManager.COLORS['bg_active']};
+                color: {UIStyleManager.COLORS['text_primary']};
+            }}
+            QTextEdit {{
+                {UIStyleManager.get_input_style()}
+            }}
+            QStackedWidget {{
+                background-color: {UIStyleManager.COLORS['bg_primary']};
+                border-radius: {UIStyleManager.RADIUS['xl']};
+            }}
+            QLabel#lbl_page_title {{
+                {UIStyleManager.get_label_style('2xl', 'semibold')}
+            }}
+        """
+        self.setStyleSheet(self.styleSheet() + additional_styles)
 
     def _assign_nav_icons(self):
         icon_mapping = {
@@ -2164,124 +2143,49 @@ class Prepare_send_mail(QtWidgets.QWidget):
             self.__kill_or_continue_sending()
 
     def _apply_email_info_styles(self):
-        """Apply modern UI/UX styling to page_email_info elements"""
+        """Apply modern UI/UX styling to page_email_info elements using style manager"""
         if not self.page_email_info:
             return
         
-        # Style input fields (txt_email, txt_password)
-        input_style = (
-            "background-color: #1E293B; "
-            "border: 1px solid #334155; "
-            "border-radius: 10px; "
-            "padding: 12px 16px; "
-            "color: #E2E8F0; "
-            "font-size: 14px; "
-            "min-height: 20px;"
-        )
-        
+        # Style input fields using style manager
         txt_email = self.page_email_info.findChild(QtWidgets.QLineEdit, "txt_email")
         if txt_email:
-            txt_email.setStyleSheet(input_style)
+            txt_email.setStyleSheet(UIStyleManager.get_input_style())
             txt_email.setPlaceholderText("Your email address")
         
         txt_password = self.page_email_info.findChild(QtWidgets.QLineEdit, "txt_password")
         if txt_password:
-            txt_password.setStyleSheet(input_style)
+            txt_password.setStyleSheet(UIStyleManager.get_input_style())
             txt_password.setPlaceholderText("Your email password")
             txt_password.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
         
-        # Style primary action button (btn_send_email - Start Sending Emails)
-        primary_button_style = (
-            "QPushButton {"
-            "background-color: #10B981; "
-            "border: none; "
-            "border-radius: 10px; "
-            "padding: 14px 24px; "
-            "font-weight: 600; "
-            "font-size: 15px; "
-            "color: #FFFFFF; "
-            "min-height: 24px;"
-            "}"
-            "QPushButton:hover {"
-            "background-color: #059669;"
-            "}"
-            "QPushButton:pressed {"
-            "background-color: #047857;"
-            "}"
-            "QPushButton:disabled {"
-            "background-color: #065F46; "
-            "color: #94A3B8;"
-            "}"
-        )
-        
+        # Style buttons using style manager
         if self.btn_send_real_mail:
-            self.btn_send_real_mail.setStyleSheet(primary_button_style)
+            self.btn_send_real_mail.setStyleSheet(UIStyleManager.get_button_primary_style())
             self.btn_send_real_mail.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        # Style secondary action button (btn_send_test - Send Test Email)
-        secondary_button_style = (
-            "QPushButton {"
-            "background-color: #2563EB; "
-            "border: none; "
-            "border-radius: 10px; "
-            "padding: 14px 24px; "
-            "font-weight: 600; "
-            "font-size: 15px; "
-            "color: #FFFFFF; "
-            "min-height: 24px;"
-            "}"
-            "QPushButton:hover {"
-            "background-color: #1D4ED8;"
-            "}"
-            "QPushButton:pressed {"
-            "background-color: #1E40AF;"
-            "}"
-            "QPushButton:disabled {"
-            "background-color: #1E3A8A; "
-            "color: #94A3B8;"
-            "}"
-        )
-        
         if self.btn_send_test_mail:
-            self.btn_send_test_mail.setStyleSheet(secondary_button_style)
+            self.btn_send_test_mail.setStyleSheet(UIStyleManager.get_button_secondary_style())
             self.btn_send_test_mail.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        # Style back button (btn_email_info_back)
-        back_button_style = (
-            "QPushButton {"
-            "background-color: #374151; "
-            "border: 1px solid #4B5563; "
-            "border-radius: 10px; "
-            "padding: 12px 20px; "
-            "font-weight: 500; "
-            "font-size: 14px; "
-            "color: #E5E7EB; "
-            "min-height: 20px;"
-            "}"
-            "QPushButton:hover {"
-            "background-color: #4B5563; "
-            "border-color: #6B7280;"
-            "}"
-            "QPushButton:pressed {"
-            "background-color: #1F2937;"
-            "}"
-        )
-        
         if self.btn_email_info_back:
-            self.btn_email_info_back.setStyleSheet(back_button_style)
+            self.btn_email_info_back.setStyleSheet(UIStyleManager.get_button_tertiary_style())
             self.btn_email_info_back.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        # Style labels for better readability
-        label_style = (
-            "color: #E5E7EB; "
-            "font-size: 14px; "
-            "font-weight: 500;"
-        )
-        
-        # Find and style all QLabels in page_email_info
+        # Style labels using style manager
         for label in self.page_email_info.findChildren(QtWidgets.QLabel):
-            if label.objectName() and "label" in label.objectName().lower():
-                label.setStyleSheet(label_style)
+            if label.objectName():
+                obj_name = label.objectName()
+                # Determine label size based on object name
+                if "email_info_notice" in obj_name:
+                    # Important notice - larger
+                    label.setStyleSheet(UIStyleManager.get_label_style('lg', 'semibold'))
+                elif "email_field" in obj_name or "password_field" in obj_name:
+                    # Field labels - medium size
+                    label.setStyleSheet(UIStyleManager.get_label_style('lg', 'semibold'))
+                elif "label" in obj_name.lower():
+                    # Default labels
+                    label.setStyleSheet(UIStyleManager.get_label_style('base', 'medium'))
     
     def __load_data_from_DB(self, id):
         """Legacy method - kept for backward compatibility"""

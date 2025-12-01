@@ -38,6 +38,7 @@ async def create_sending_rules(rules: SendingRulesCreate, db: Session = Depends(
             existing.period_between_reminders = rules.period_between_reminders
             existing.delay_sending_mail = rules.delay_sending_mail
             existing.start_time_send = rules.start_time_send
+            existing.end_time_send = rules.end_time_send
             db.commit()
             db.refresh(existing)
             result = existing
@@ -54,7 +55,8 @@ async def create_sending_rules(rules: SendingRulesCreate, db: Session = Depends(
                 send_working_day_only=rules.send_working_day_only,
                 period_between_reminders=rules.period_between_reminders,
                 delay_sending_mail=rules.delay_sending_mail,
-                start_time_send=rules.start_time_send
+                start_time_send=rules.start_time_send,
+                end_time_send=rules.end_time_send
             )
             db.add(db_rules)
             db.commit()
@@ -74,6 +76,7 @@ async def create_sending_rules(rules: SendingRulesCreate, db: Session = Depends(
             period_between_reminders=result.period_between_reminders,
             delay_sending_mail=result.delay_sending_mail,
             start_time_send=str(result.start_time_send) if result.start_time_send else None,
+            end_time_send=str(result.end_time_send) if result.end_time_send else None,
             created_at=result.created_at
         )
     except Exception as e:
@@ -107,6 +110,7 @@ async def get_sending_rules(user_email: str, db: Session = Depends(get_db)):
             period_between_reminders=rules.period_between_reminders,
             delay_sending_mail=rules.delay_sending_mail,
             start_time_send=str(rules.start_time_send) if rules.start_time_send else None,
+            end_time_send=str(rules.end_time_send) if rules.end_time_send else None,
             created_at=rules.created_at
         )
     except HTTPException:
@@ -149,6 +153,8 @@ async def update_sending_rules(user_email: str, rules: SendingRulesUpdate, db: S
             db_rules.delay_sending_mail = rules.delay_sending_mail
         if rules.start_time_send is not None:
             db_rules.start_time_send = rules.start_time_send
+        if rules.end_time_send is not None:
+            db_rules.end_time_send = rules.end_time_send
         
         db.commit()
         db.refresh(db_rules)
@@ -166,6 +172,7 @@ async def update_sending_rules(user_email: str, rules: SendingRulesUpdate, db: S
             period_between_reminders=db_rules.period_between_reminders,
             delay_sending_mail=db_rules.delay_sending_mail,
             start_time_send=str(db_rules.start_time_send) if db_rules.start_time_send else None,
+            end_time_send=str(db_rules.end_time_send) if db_rules.end_time_send else None,
             created_at=db_rules.created_at
         )
     except HTTPException:

@@ -281,7 +281,12 @@ class MyWindow(QtWidgets.QMainWindow):
             user_email=self.user_email,
             api_client=self.api_client
         )
-        self.email_prep = Prepare_send_mail(self.page_prepare_send_email, self.middle_info_pass)
+        self.email_prep = Prepare_send_mail(
+            self.page_prepare_send_email, 
+            self.middle_info_pass,
+            user_email=self.user_email,
+            api_client=self.api_client
+        )
 
         self.statics = Statics(self.page_statics)
         self.dashboard = Dashboard(
@@ -340,6 +345,9 @@ class MyWindow(QtWidgets.QMainWindow):
     def btn_page_prepare_send_email(self):
         self._set_active_nav(self.btn_prepare_send_email, "Send Email", self.page_prepare_send_email)
         self.stacked_content.setCurrentWidget(self.page_prepare_send_email)
+        # Load sending rules from database when page is shown
+        if hasattr(self, 'email_prep') and self.email_prep:
+            self.email_prep.load_sending_rules_from_db()
 
     def btn_page_statics(self):
         self._set_active_nav(self.btn_statics, "Statistics", self.page_statics)
@@ -1612,10 +1620,12 @@ class EmailEditor(QtCore.QObject):
             italic_btn.setChecked(fmt.fontItalic())
 
 class Prepare_send_mail(QtWidgets.QWidget):
-    def __init__(self, widget,middle_info_pass):
+    def __init__(self, widget, middle_info_pass, user_email: str = "", api_client: Optional[ApplyCheAPIClient] = None):
         super().__init__(widget)  # <-- important
         bus = EventBus()
         self.middle_info_pass = middle_info_pass
+        self.user_email = user_email
+        self.api_client = api_client
         self.bus = bus
         self.is_test = False
         self.send_main_info = {
@@ -1635,20 +1645,8 @@ class Prepare_send_mail(QtWidgets.QWidget):
 
         self.widget = widget.findChild(QtWidgets.QWidget, "page_email_conditions")
 
-        fields = [
-            "txt_number_of_main_mails",
-            "txt_number_of_first_reminder",
-            "txt_number_of_second_reminder",
-            "txt_number_of_third_reminder",
-            "txt_number_of_email_per_university",
-            "txt_start_time",
-            "txt_end_time"
-        ]
-        for name in fields:
-            line_edit = self.widget.findChild(QtWidgets.QLineEdit, name)
-            if line_edit:
-                value = self.__load_data_from_DB(name)
-                line_edit.setText(str(value))
+        # Note: Data will be loaded from database when page is shown (in btn_page_prepare_send_email)
+        # This allows the page to always show the latest data from the database
 
 
 
@@ -1675,6 +1673,130 @@ class Prepare_send_mail(QtWidgets.QWidget):
         self.btn_stop_start_sending.clicked.connect(self.__change_send_status)
 
         self.total_page = 3
+        
+    def load_sending_rules_from_db(self):
+        """Load sending rules from database and populate UI elements"""
+        if not self.user_email:
+            print("Warning: User email not set, cannot load sending rules from database")
+            return
+        
+        if not self.api_client:
+            # Try to initialize API client if not available
+            try:
+                self.api_client = ApplyCheAPIClient("http://localhost:8000", timeout=3)
+            except Exception as e:
+                print(f"Warning: Could not create API client: {e}")
+                return
+        
+        # Check if API is available
+        try:
+            if not self.api_client.is_available():
+                print("Info: API server is not running. Cannot load sending rules from database.")
+                return
+        except Exception:
+            print("Info: Could not check API availability. Cannot load sending rules from database.")
+            return
+        
+        try:
+            # Fetch sending rules from database
+            rules = self.api_client.get_sending_rules(self.user_email)
+            
+            # Map database fields to UI elements
+            # Text fields
+            field_mapping = {
+                "txt_number_of_main_mails": rules.get("main_mail_number", 0),
+                "txt_number_of_first_reminder": rules.get("reminder_one", 0),
+                "txt_number_of_second_reminder": rules.get("reminder_two", 0),
+                "txt_number_of_third_reminder": rules.get("reminder_three", 0),
+                "txt_number_of_email_per_university": rules.get("max_email_per_university", -1),
+                "txt_preiod_between_reminders": rules.get("period_between_reminders", 0),
+            }
+            
+            # Populate text fields
+            for field_name, value in field_mapping.items():
+                line_edit = self.widget.findChild(QtWidgets.QLineEdit, field_name)
+                if line_edit:
+                    line_edit.setText(str(value))
+            
+            # Handle time fields (convert from TIME format "HH:MM:SS" or "HH:MM:SS+00" to "HH:MM")
+            start_time = rules.get("start_time_send")
+            if start_time:
+                # Extract HH:MM from time string (could be "09:00:00" or "09:00:00+00:00")
+                time_str = str(start_time).strip()
+                # Remove timezone info if present (e.g., "+00:00" or "+00")
+                if "+" in time_str:
+                    time_str = time_str.split("+")[0]
+                elif "-" in time_str and time_str.count("-") > 1:
+                    # Handle negative timezone (unlikely but possible)
+                    parts = time_str.rsplit("-", 1)
+                    if len(parts) == 2:
+                        time_str = parts[0]
+                
+                # Split by ":" and take first two parts (HH:MM)
+                time_parts = time_str.split(":")
+                if len(time_parts) >= 2:
+                    formatted_time = f"{time_parts[0].zfill(2)}:{time_parts[1].zfill(2)}"
+                    start_time_edit = self.widget.findChild(QtWidgets.QLineEdit, "txt_start_time")
+                    if start_time_edit:
+                        start_time_edit.setText(formatted_time)
+            
+            end_time = rules.get("end_time_send")
+            if end_time:
+                # Extract HH:MM from time string
+                time_str = str(end_time).strip()
+                # Remove timezone info if present
+                if "+" in time_str:
+                    time_str = time_str.split("+")[0]
+                elif "-" in time_str and time_str.count("-") > 1:
+                    parts = time_str.rsplit("-", 1)
+                    if len(parts) == 2:
+                        time_str = parts[0]
+                
+                # Split by ":" and take first two parts (HH:MM)
+                time_parts = time_str.split(":")
+                if len(time_parts) >= 2:
+                    formatted_time = f"{time_parts[0].zfill(2)}:{time_parts[1].zfill(2)}"
+                    end_time_edit = self.widget.findChild(QtWidgets.QLineEdit, "txt_end_time")
+                    if end_time_edit:
+                        end_time_edit.setText(formatted_time)
+            
+            # Handle checkboxes
+            local_prof_time = rules.get("local_professor_time", False)
+            is_prof_local_checkbox = self.widget.findChild(QtWidgets.QCheckBox, "is_professor_local_time")
+            if is_prof_local_checkbox:
+                is_prof_local_checkbox.setChecked(bool(local_prof_time))
+            
+            send_working_day = rules.get("send_working_day_only", False)
+            is_send_working_day_widget = self.widget.findChild(QtWidgets.QCheckBox, "is_send_working_day_only")
+            if is_send_working_day_widget:
+                is_send_working_day_widget.setChecked(bool(send_working_day))
+            else:
+                # Fallback: try as QWidget if checkbox not found
+                widget = self.widget.findChild(QtWidgets.QWidget, "is_send_working_day_only")
+                if widget and hasattr(widget, 'setChecked'):
+                    widget.setChecked(bool(send_working_day))
+            
+            print(f"Sending rules loaded successfully for {self.user_email}")
+            
+        except requests.exceptions.HTTPError as e:
+            # 404 means no rules exist yet - that's okay, user can create new ones
+            if e.response is not None and e.response.status_code == 404:
+                print("Info: No sending rules found in database. User can create new rules.")
+            else:
+                error_msg = "Error loading sending rules from database."
+                if e.response is not None:
+                    try:
+                        detail = e.response.json()
+                        if isinstance(detail, dict) and detail.get("detail"):
+                            error_msg = detail["detail"]
+                    except ValueError:
+                        pass
+                print(f"Warning: {error_msg}")
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            print(f"Info: Cannot connect to API server. Cannot load sending rules: {str(e)}")
+        except Exception as e:
+            print(f"Warning: Unexpected error loading sending rules: {str(e)}")
+    
     def __get_data_from_user(self):
         self.txt_number_of_main_mails = self.widget.findChild(QtWidgets.QLineEdit, "txt_number_of_main_mails").text()
         self.txt_number_of_first_reminder = self.widget.findChild(QtWidgets.QLineEdit, "txt_number_of_first_reminder").text()
@@ -1684,8 +1806,16 @@ class Prepare_send_mail(QtWidgets.QWidget):
         self.txt_start_time = self.widget.findChild(QtWidgets.QLineEdit,"txt_start_time").text()
         self.txt_end_time = self.widget.findChild(QtWidgets.QLineEdit,"txt_end_time").text()
         self.txt_period_day = self.widget.findChild(QtWidgets.QLineEdit,"txt_preiod_between_reminders").text()
-        self.is_send_working_day_only = self.widget.findChild(QtWidgets.QWidget, "is_send_working_day_only").isChecked()
-        self.is_professor_local_time = self.widget.findChild(QtWidgets.QCheckBox, "is_professor_local_time").isChecked()
+        is_send_working_day_widget = self.widget.findChild(QtWidgets.QCheckBox, "is_send_working_day_only")
+        if is_send_working_day_widget:
+            self.is_send_working_day_only = is_send_working_day_widget.isChecked()
+        else:
+            # Fallback: try as QWidget if checkbox not found
+            widget = self.widget.findChild(QtWidgets.QWidget, "is_send_working_day_only")
+            self.is_send_working_day_only = widget.isChecked() if widget and hasattr(widget, 'isChecked') else False
+        
+        is_prof_local_widget = self.widget.findChild(QtWidgets.QCheckBox, "is_professor_local_time")
+        self.is_professor_local_time = is_prof_local_widget.isChecked() if is_prof_local_widget else False
     def __check_time(self):
         if len(self.txt_start_time.split(":"))!=2 or len(self.txt_end_time.split(":"))!=2:
             QMessageBox.critical(
@@ -1748,24 +1878,204 @@ class Prepare_send_mail(QtWidgets.QWidget):
         return True
     def next_page(self):
         self.__get_data_from_user()
-        for k in self.send_main_info.keys():
-            self.send_main_info[k] = getattr(self,k) if getattr(self,k) != None and getattr(self,k) !="" else 0
-        for k in self.send_main_info.keys():
-            if str(self.send_main_info[k]).isdigit() == False or str(self.send_main_info[k]).isdigit() < 0:
+        
+        # Validate txt_number_of_main_mails, txt_number_of_first_reminder, 
+        # txt_number_of_second_reminder, txt_number_of_third_reminder (must be integer >= 0)
+        reminder_fields = {
+            "txt_number_of_main_mails": self.txt_number_of_main_mails,
+            "txt_number_of_first_reminder": self.txt_number_of_first_reminder,
+            "txt_number_of_second_reminder": self.txt_number_of_second_reminder,
+            "txt_number_of_third_reminder": self.txt_number_of_third_reminder
+        }
+        
+        for field_name, field_value in reminder_fields.items():
+            if not field_value or field_value.strip() == "":
                 QMessageBox.critical(
                     None,
-                    "Error",
-                    "Only number(Integer) above 0 is acceptable!!",
+                    "Validation Error",
+                    f"{field_name.replace('_', ' ').title()} is required.",
                     QMessageBox.StandardButton.Ok
                 )
                 return
-        self.time_send["txt_start_time"]= self.txt_start_time.split(":")
-
-        self.time_send["txt_end_time"] = self.txt_end_time.split(":")
-        if (self.__check_time() == False):
+            
+            try:
+                value = int(field_value.strip())
+                if value < 0:
+                    QMessageBox.critical(
+                        None,
+                        "Validation Error",
+                        f"{field_name.replace('_', ' ').title()} must be an integer greater than or equal to 0.",
+                        QMessageBox.StandardButton.Ok
+                    )
+                    return
+            except ValueError:
+                QMessageBox.critical(
+                    None,
+                    "Validation Error",
+                    f"{field_name.replace('_', ' ').title()} must be an integer.",
+                    QMessageBox.StandardButton.Ok
+                )
+                return
+        
+        # Validate txt_preiod_between_reminders (must be integer > 0)
+        if not self.txt_period_day or self.txt_period_day.strip() == "":
+            QMessageBox.critical(
+                None,
+                "Validation Error",
+                "Period between reminders is required.",
+                QMessageBox.StandardButton.Ok
+            )
             return
+        
+        try:
+            period_value = int(self.txt_period_day.strip())
+            if period_value <= 0:
+                QMessageBox.critical(
+                    None,
+                    "Validation Error",
+                    "Period between reminders must be an integer greater than 0.",
+                    QMessageBox.StandardButton.Ok
+                )
+                return
+        except ValueError:
+            QMessageBox.critical(
+                None,
+                "Validation Error",
+                "Period between reminders must be an integer.",
+                QMessageBox.StandardButton.Ok
+            )
+            return
+        
+        # Validate txt_number_of_email_per_university (must be > 0 or -1)
+        if not self.txt_number_of_email_per_university or self.txt_number_of_email_per_university.strip() == "":
+            QMessageBox.critical(
+                None,
+                "Validation Error",
+                "Number of emails per university is required.",
+                QMessageBox.StandardButton.Ok
+            )
+            return
+        
+        try:
+            email_per_uni_value = int(self.txt_number_of_email_per_university.strip())
+            if email_per_uni_value != -1 and email_per_uni_value <= 0:
+                QMessageBox.critical(
+                    None,
+                    "Validation Error",
+                    "Number of emails per university must be greater than 0 or -1.",
+                    QMessageBox.StandardButton.Ok
+                )
+                return
+        except ValueError:
+            QMessageBox.critical(
+                None,
+                "Validation Error",
+                "Number of emails per university must be an integer.",
+                QMessageBox.StandardButton.Ok
+            )
+            return
+        
+        # Validate time format (integer:integer for hour:minute)
+        if not self.txt_start_time or not self.txt_end_time:
+            QMessageBox.critical(
+                None,
+                "Validation Error",
+                "Start time and end time are required.",
+                QMessageBox.StandardButton.Ok
+            )
+            return
+        
+        self.time_send["txt_start_time"] = self.txt_start_time.split(":")
+        self.time_send["txt_end_time"] = self.txt_end_time.split(":")
+        
+        if self.__check_time() == False:
+            return
+        
+        # All validations passed, save to database
+        self._save_sending_rules_to_db()
+        
         self.prof_local_time = self.is_professor_local_time
         self.main_widget.setCurrentWidget(self.page_email_info)
+
+    def _save_sending_rules_to_db(self):
+        """Save validated sending rules to database"""
+        if not self.user_email:
+            print("Warning: User email not set, cannot save sending rules to database")
+            return
+        
+        if not self.api_client:
+            # Try to initialize API client if not available
+            try:
+                self.api_client = ApplyCheAPIClient("http://localhost:8000", timeout=3)
+            except Exception as e:
+                print(f"Warning: Could not create API client: {e}")
+                return
+        
+        # Check if API is available
+        try:
+            if not self.api_client.is_available():
+                print("Warning: API server is not running. Sending rules will not be saved to database.")
+                return
+        except Exception:
+            print("Warning: Could not check API availability. Sending rules will not be saved to database.")
+            return
+        
+        # Convert time strings to HH:MM:SS format for database
+        # Pad hours and minutes to ensure 2-digit format
+        start_hour = str(self.time_send['txt_start_time'][0]).zfill(2)
+        start_min = str(self.time_send['txt_start_time'][1]).zfill(2)
+        end_hour = str(self.time_send['txt_end_time'][0]).zfill(2)
+        end_min = str(self.time_send['txt_end_time'][1]).zfill(2)
+        
+        start_time_str = f"{start_hour}:{start_min}:00"
+        end_time_str = f"{end_hour}:{end_min}:00"
+        
+        # Prepare data for API
+        rules_data = {
+            "main_mail_number": int(self.txt_number_of_main_mails.strip()),
+            "reminder_one": int(self.txt_number_of_first_reminder.strip()),
+            "reminder_two": int(self.txt_number_of_second_reminder.strip()),
+            "reminder_three": int(self.txt_number_of_third_reminder.strip()),
+            "period_between_reminders": int(self.txt_period_day.strip()),
+            "max_email_per_university": int(self.txt_number_of_email_per_university.strip()),
+            "local_professor_time": self.is_professor_local_time,
+            "send_working_day_only": self.is_send_working_day_only,
+            "start_time_send": start_time_str,
+            "end_time_send": end_time_str
+        }
+        
+        try:
+            self.api_client.create_sending_rules(
+                user_email=self.user_email,
+                **rules_data
+            )
+            print(f"Sending rules saved successfully for {self.user_email}")
+        except requests.exceptions.HTTPError as e:
+            error_msg = "Error saving sending rules to database."
+            if e.response is not None:
+                try:
+                    detail = e.response.json()
+                    if isinstance(detail, dict) and detail.get("detail"):
+                        error_msg = detail["detail"]
+                except ValueError:
+                    pass
+            QMessageBox.warning(
+                self.widget,
+                "Save Warning",
+                f"{error_msg}\n\nRules validated but not saved to database."
+            )
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            QMessageBox.warning(
+                self.widget,
+                "Connection Error",
+                f"Cannot connect to API server.\n{str(e)}\n\nRules validated but not saved to database."
+            )
+        except Exception as e:
+            QMessageBox.warning(
+                self.widget,
+                "Unexpected Error",
+                f"An error occurred while saving sending rules:\n{str(e)}\n\nRules validated but not saved to database."
+            )
 
     def __back_send_mail(self):
         self.main_widget.setCurrentWidget(self.widget)
@@ -1850,7 +2160,9 @@ class Prepare_send_mail(QtWidgets.QWidget):
         else:
             self.__kill_or_continue_sending()
 
-    def __load_data_from_DB(self,id):
+    def __load_data_from_DB(self, id):
+        """Legacy method - kept for backward compatibility"""
+        # This method is no longer used - data is loaded via load_sending_rules_from_db()
         return -1
 
 

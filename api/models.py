@@ -67,6 +67,7 @@ class SendingRulesCreate(BaseModel):
     period_between_reminders: int = 7
     delay_sending_mail: int = 0
     start_time_send: Optional[str] = "09:00:00"
+    end_time_send: Optional[str] = None
 
 
 class SendingRulesResponse(BaseModel):
@@ -83,6 +84,7 @@ class SendingRulesResponse(BaseModel):
     period_between_reminders: int
     delay_sending_mail: int
     start_time_send: Optional[str]
+    end_time_send: Optional[str]
     created_at: datetime
 
 
@@ -98,6 +100,7 @@ class SendingRulesUpdate(BaseModel):
     period_between_reminders: Optional[int] = None
     delay_sending_mail: Optional[int] = None
     start_time_send: Optional[str] = None
+    end_time_send: Optional[str] = None
 
 
 # Email Queue Models

@@ -346,6 +346,7 @@ class SendingRules(Base):
     period_between_reminders = Column(SmallInteger, server_default='7', nullable=False)
     delay_sending_mail = Column(SmallInteger, server_default='0', nullable=False)
     start_time_send = Column(Time(timezone=True), server_default=text("'09:00:00+00'::time with time zone"), nullable=True)
+    end_time_send = Column(Time(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     
     __table_args__ = (

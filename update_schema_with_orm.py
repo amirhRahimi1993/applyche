@@ -76,34 +76,50 @@ def update_schema():
         Base.metadata.create_all(bind=engine, checkfirst=True)
         print("✓ Schema updated successfully!\n")
 
-        # Verify template_files has file_id column
-        print("Step 4: Verifying template_files table structure...")
+        # Explicitly add end_time_send column if it doesn't exist
+        print("Step 4: Adding end_time_send column to sending_rules if needed...")
         inspector = inspect(engine)
-        columns = [col['name'] for col in inspector.get_columns('template_files')]
+        sending_rules_columns = [col['name'] for col in inspector.get_columns('sending_rules')]
         
-        if 'file_id' in columns:
-            print("✓ 'file_id' column exists in template_files")
+        if 'end_time_send' not in sending_rules_columns:
+            print("  Adding end_time_send column...")
+            try:
+                with engine.begin() as conn:
+                    # Add the column with the same type as start_time_send
+                    conn.execute(text("""
+                        ALTER TABLE sending_rules 
+                        ADD COLUMN IF NOT EXISTS end_time_send TIME WITH TIME ZONE
+                    """))
+                print("✓ end_time_send column added successfully")
+            except SQLAlchemyError as e:
+                print(f"⚠️  Error adding end_time_send column: {e}")
+                print("   You may need to add it manually using:")
+                print("   ALTER TABLE sending_rules ADD COLUMN end_time_send TIME WITH TIME ZONE;")
         else:
-            print("⚠️  'file_id' column NOT found!")
-            print("   You may need to run migrate_template_files_fk.py instead")
-            return False
+            print("✓ end_time_send column already exists")
 
-        # Check for foreign key
-        fks = inspector.get_foreign_keys('template_files')
-        has_file_fk = any(fk['referred_table'] == 'files' for fk in fks)
+        # Verify all required columns exist
+        print("\nStep 5: Verifying sending_rules table structure...")
+        inspector = inspect(engine)
+        sending_rules_columns = [col['name'] for col in inspector.get_columns('sending_rules')]
         
-        if has_file_fk:
-            print("✓ Foreign key to 'files' table exists")
+        required_columns = ['end_time_send', 'local_professor_time', 'send_working_day_only']
+        missing_columns = [col for col in required_columns if col not in sending_rules_columns]
+        
+        if not missing_columns:
+            print("✓ All required columns exist in sending_rules:")
+            for col in required_columns:
+                print(f"    - {col}")
         else:
-            print("⚠️  Foreign key to 'files' table NOT found!")
-            print("   Run migrate_template_files_fk.py to add the constraint")
+            print("⚠️  Missing columns in sending_rules:")
+            for col in missing_columns:
+                print(f"    - {col}")
+            print("   Please add them manually using ALTER TABLE statements.")
             return False
 
         print("\n" + "=" * 60)
         print("✓ Schema update completed!")
         print("=" * 60)
-        print("\nNote: If you have existing data, run migrate_template_files_fk.py")
-        print("      to backfill file_id values for existing template_files records.")
         return True
 
     except SQLAlchemyError as exc:

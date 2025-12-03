@@ -251,6 +251,14 @@ class EmailSender:
             message_id = row.get('message_id')
             if pd.notna(message_id) and message_id:
                 # TODO: Implement actual reply checking
+                # When implementing:
+                # 1. Check for replies to this message_id
+                # 2. Extract reply text
+                # 3. Update answered column in DataFrame to True
+                # 4. Update answer_text column in DataFrame with reply content
+                # 5. Update answer field in send_log table using:
+                #    self.api_client.update_send_log_answer(log_id, answer_text, self.user_email)
+                #    (You'll need to find the log_id by message_id)
                 # For now, this is a placeholder
                 pass
     
@@ -265,6 +273,13 @@ class EmailSender:
         except Exception as e:
             print(f"Error getting email template: {e}")
             return None
+    
+    def _get_template_id(self, template_type: int = 0) -> Optional[int]:
+        """Get template ID for a given template type"""
+        template = self._get_email_template(template_type)
+        if template:
+            return template.get("id")
+        return None
     
     def _substitute_template(self, template_body: str, subject: Optional[str], row_idx: int) -> Tuple[str, Optional[str], List[str]]:
         """
@@ -524,6 +539,20 @@ class EmailSender:
                                     user_email=self.user_email,
                                     file_path=self.professor_list_path
                                 )
+                                
+                                # Save to send_log table
+                                template_id = self._get_template_id(template_type=0)
+                                self.api_client.create_send_log(
+                                    user_email=self.user_email,
+                                    sent_to=str(professor_email),
+                                    send_type=0,  # 0 = main mail
+                                    subject=substituted_subject or "No Subject",
+                                    body=substituted_body,
+                                    template_id=template_id,
+                                    delivery_status=1,  # 1 = sent successfully
+                                    message_id=message_id,
+                                    answer=None  # Will be updated when reply is received
+                                )
                             except Exception as e:
                                 print(f"Error saving to database: {e}")
                         
@@ -733,6 +762,20 @@ class EmailSender:
                                 self.api_client.upsert_professor_list(
                                     user_email=self.user_email,
                                     file_path=self.professor_list_path
+                                )
+                                
+                                # Save to send_log table
+                                template_id = self._get_template_id(template_type=reminder_type)
+                                self.api_client.create_send_log(
+                                    user_email=self.user_email,
+                                    sent_to=str(professor_email),
+                                    send_type=reminder_type,  # 1, 2, or 3 for reminders
+                                    subject=substituted_subject or "No Subject",
+                                    body=substituted_body,
+                                    template_id=template_id,
+                                    delivery_status=1,  # 1 = sent successfully
+                                    message_id=reply_message_id,
+                                    answer=None  # Will be updated when reply is received
                                 )
                             except Exception as e:
                                 print(f"Error saving to database: {e}")

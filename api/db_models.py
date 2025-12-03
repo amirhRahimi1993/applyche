@@ -401,6 +401,8 @@ class SendLog(Base):
     send_type = Column(SmallInteger, nullable=False)
     delivery_status = Column(SmallInteger, nullable=False)
     remote_message_id = Column(Text, nullable=True)
+    message_id = Column(Text, nullable=True)  # Message ID of sent email
+    answer = Column(Text, nullable=True)  # Answer/reply from receiver
     
     __table_args__ = (
         Index('idx_send_log_user_time', 'user_email', 'sent_time'),

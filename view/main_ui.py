@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
 )
 
 from controller.professors_controller import ProfessorsController
+from controller.email_sender import EmailSender
 from middle_wares.coordinator_sending_mails import Coordinator
 from events.event_bus import EventBus
 from middle_wares.middle_info_pass import middle_info_pass
@@ -35,6 +36,8 @@ from api_client import ApplyCheAPIClient
 from view.ui_style_manager import UIStyleManager
 from utility.university_location import get_country_city_string
 import resources
+import os
+import threading
 
 
 class WarningsDialog(QDialog):
@@ -2131,15 +2134,104 @@ class Prepare_send_mail(QtWidgets.QWidget):
         self.__start_sending_mails()
 
     def __start_sending_mails(self):
-        # Create coordinator if not already done
-        if not hasattr(self, "coordinator"):
-            self.coordinator = Coordinator(self.bus)
-            self.coordinator.set_view(self)
-
-        info = self.send_information_to_controller()
-        self.coordinator.start_sending(info)
+        """Start sending emails using EmailSender"""
+        # Get data from user
+        self.__get_data_from_user()
+        
+        # Get professor list path from database
+        professor_list_path = None
+        if self.api_client and self.user_email:
+            try:
+                professor_list = self.api_client.get_professor_list(self.user_email)
+                if professor_list and professor_list.get("file_path"):
+                    file_path = professor_list["file_path"]
+                    if os.path.exists(file_path):
+                        professor_list_path = file_path
+            except Exception as e:
+                self.display_log(f"❌ Error getting professor list: {e}")
+                return
+        
+        if not professor_list_path:
+            self.display_log("❌ Error: Professor list not found. Please upload a professor list first.")
+            return
+        
+        # Create EmailSender instance
+        try:
+            self.email_sender = EmailSender(
+                email=self.email,
+                app_password=self.password,
+                professor_list_path=professor_list_path,
+                api_client=self.api_client,
+                user_email=self.user_email
+            )
+            
+            # Handle test mode - modify professor list to use sender email as receiver
+            if self.is_test:
+                # For test mode, we need to temporarily modify the professor_email column
+                # Save original path and create a test copy
+                import shutil
+                test_path = professor_list_path.replace('.xlsx', '_test.xlsx').replace('.csv', '_test.csv')
+                shutil.copy2(professor_list_path, test_path)
+                
+                # Load and modify test file
+                import pandas as pd
+                if test_path.endswith('.xlsx'):
+                    test_df = pd.read_excel(test_path, header=0, engine='openpyxl')
+                else:
+                    test_df = pd.read_csv(test_path, header=0)
+                
+                # Find professor_email column and replace with sender email
+                for col in test_df.columns:
+                    if col.lower().strip() == 'professor_email':
+                        test_df[col] = self.email
+                        break
+                
+                # Save test file
+                if test_path.endswith('.xlsx'):
+                    test_df.to_excel(test_path, index=False, engine='openpyxl', header=True)
+                else:
+                    test_df.to_csv(test_path, index=False, header=True, encoding='utf-8')
+                
+                # Update EmailSender to use test file
+                self.email_sender.professor_list_path = test_path
+                self.email_sender.df = test_df
+                self.display_log("📧 Test mode: Sending emails to yourself")
+            
+            # Convert string values to appropriate types
+            try:
+                txt_number_of_main_mails = int(self.txt_number_of_main_mails) if self.txt_number_of_main_mails else 0
+                txt_number_of_first_reminder = int(self.txt_number_of_first_reminder) if self.txt_number_of_first_reminder else 0
+                txt_number_of_second_reminder = int(self.txt_number_of_second_reminder) if self.txt_number_of_second_reminder else 0
+                txt_number_of_third_reminder = int(self.txt_number_of_third_reminder) if self.txt_number_of_third_reminder else 0
+                txt_period_between_reminders = int(self.txt_period_day) if self.txt_period_day else 7
+            except ValueError:
+                self.display_log("❌ Error: Invalid number format in sending rules")
+                return
+            
+            # Start sending with callback for logging
+            self.email_sender.start_sending(
+                txt_number_of_main_mails=txt_number_of_main_mails,
+                txt_start_time=self.txt_start_time,
+                txt_end_time=self.txt_end_time,
+                is_professor_local_time=self.is_professor_local_time,
+                is_sending_working_day_only=self.is_send_working_day_only,
+                txt_period_between_reminders=txt_period_between_reminders,
+                txt_number_of_first_reminder=txt_number_of_first_reminder,
+                txt_number_of_second_reminder=txt_number_of_second_reminder,
+                txt_number_of_third_reminder=txt_number_of_third_reminder,
+                callback=self._email_sender_callback
+            )
+            
+        except Exception as e:
+            self.display_log(f"❌ Error starting email sender: {e}")
+            import traceback
+            traceback.print_exc()
 
     def __kill_or_continue_sending(self):
+        """Stop sending emails"""
+        if hasattr(self, "email_sender"):
+            self.email_sender.stop_sending()
+            self.display_log("🛑 Email sending stopped by user")
         if hasattr(self, "coordinator"):
             self.coordinator.stop_sending()
 
@@ -2148,8 +2240,17 @@ class Prepare_send_mail(QtWidgets.QWidget):
         print(f"[LOG] {message}")
         # Optionally show logs on UI (if you have a QTextEdit or QLabel)
         log_text = self.page_log.findChild(QtWidgets.QPlainTextEdit, "txt_log")
-        message=message + "\n"
-        log_text.appendPlainText(message)
+        if log_text:
+            message = message + "\n"
+            log_text.appendPlainText(message)
+            # Auto-scroll to bottom
+            cursor = log_text.textCursor()
+            cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
+            log_text.setTextCursor(cursor)
+    
+    def _email_sender_callback(self, message):
+        """Callback function for EmailSender to display logs"""
+        self.display_log(message)
     def __move_file_into_safe_place(self):
         if os.path.exists("AppData/Local") == False:
             os.mkdir("AppData/Local")

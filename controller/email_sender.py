@@ -502,6 +502,9 @@ class EmailSender:
                         continue
                     
                     # Send email
+                    if callback:
+                        callback(f"📤 Attempting to send main mail to {professor_email}...")
+                    
                     message_id = self._send_email(
                         to_email=str(professor_email),
                         subject=substituted_subject or "No Subject",
@@ -526,18 +529,22 @@ class EmailSender:
                         
                         main_mails_sent += 1
                         if callback:
-                            callback(f"✅ Main mail {main_mails_sent}/{txt_number_of_main_mails} sent to {professor_email}")
+                            callback(f"✅ Sending successful: Main mail {main_mails_sent}/{txt_number_of_main_mails} sent to {professor_email}")
                     else:
                         if callback:
-                            callback(f"❌ Failed to send main mail to {professor_email}")
+                            callback(f"❌ Sending failed: Failed to send main mail to {professor_email}")
                 
                 # Wait 5 minutes before next batch
                 if main_mails_sent < txt_number_of_main_mails:
                     if callback:
-                        callback("⏳ Waiting 5 minutes before next batch...")
-                    for _ in range(300):  # 5 minutes = 300 seconds
+                        callback("⏳ Waiting 5 minutes before next batch to prevent spam detection...")
+                    for remaining in range(300, 0, -1):  # 5 minutes = 300 seconds
                         if not self._sending:
                             break
+                        minutes = remaining // 60
+                        secs = remaining % 60
+                        if callback and remaining % 10 == 0:  # Update every 10 seconds
+                            callback(f"⏳ Preventing detecting spam, you should wait {minutes:02d}:{secs:02d}")
                         time.sleep(1)
             
             # Send first reminders
@@ -704,6 +711,9 @@ class EmailSender:
                         continue
                     
                     # Send email as reply
+                    if callback:
+                        callback(f"📤 Attempting to send reminder {reminder_type} to {professor_email}...")
+                    
                     reply_message_id = self._send_email(
                         to_email=str(professor_email),
                         subject=substituted_subject or "No Subject",
@@ -729,18 +739,22 @@ class EmailSender:
                         
                         reminders_sent += 1
                         if callback:
-                            callback(f"✅ Reminder {reminder_type} {reminders_sent}/{number_to_send} sent to {professor_email}")
+                            callback(f"✅ Sending successful: Reminder {reminder_type} {reminders_sent}/{number_to_send} sent to {professor_email}")
                     else:
                         if callback:
-                            callback(f"❌ Failed to send reminder {reminder_type} to {professor_email}")
+                            callback(f"❌ Sending failed: Failed to send reminder {reminder_type} to {professor_email}")
                 
                 # Wait 5 minutes before next batch
                 if reminders_sent < number_to_send:
                     if callback:
-                        callback(f"⏳ Waiting 5 minutes before next reminder {reminder_type} batch...")
-                    for _ in range(300):  # 5 minutes
+                        callback(f"⏳ Waiting 5 minutes before next reminder {reminder_type} batch to prevent spam detection...")
+                    for remaining in range(300, 0, -1):  # 5 minutes
                         if not self._sending:
                             break
+                        minutes = remaining // 60
+                        secs = remaining % 60
+                        if callback and remaining % 10 == 0:  # Update every 10 seconds
+                            callback(f"⏳ Preventing detecting spam, you should wait {minutes:02d}:{secs:02d}")
                         time.sleep(1)
                         
         except Exception as e:

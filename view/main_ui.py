@@ -307,13 +307,20 @@ class MyWindow(QtWidgets.QMainWindow):
             getattr(self, "btn_professor_list", None),
             getattr(self, "btn_prepare_send_email", None),
             getattr(self, "btn_statics", None),
-            getattr(self, "btn_expriences", None),
             getattr(self, "btn_results", None),
-            getattr(self, "btn_profile", None),
         ]
         self._nav_buttons = [btn for btn in self._nav_buttons if btn is not None]
+        
+        # Bottom menu buttons (Profile and Logout) - separate from nav buttons
+        self._bottom_menu_buttons = [
+            getattr(self, "btn_profile", None),
+            getattr(self, "btn_log_out", None),
+        ]
+        self._bottom_menu_buttons = [btn for btn in self._bottom_menu_buttons if btn is not None]
+        
         self._apply_global_styles()
         self._assign_nav_icons()
+        self._setup_bottom_menu_buttons()
 
         # Enforce stretch (20% vs 80%)
         layout = self.widget_content.layout()
@@ -362,14 +369,17 @@ class MyWindow(QtWidgets.QMainWindow):
 
         self.btn_home.clicked.connect(self.__btn_page_home_arise)
         self.btn_email_template.clicked.connect(self.__btn_page_email_template)
-        self.btn_expriences.clicked.connect(self.btn_page_expriences)
         self.btn_results.clicked.connect(self.btn_page_results)
         self.btn_prepare_send_email.clicked.connect(self.btn_page_prepare_send_email)
         self.btn_statics.clicked.connect(self.btn_page_statics)
         self.btn_professor_list.clicked.connect(self.btn_page_professor_list)
 
-        self.btn_profile.clicked.connect(self.__btn_page_profile)
-        self.btn_log_out.clicked.connect(self.btn_page_logout)
+        # Connect bottom menu buttons
+        if hasattr(self, "btn_profile") and self.btn_profile:
+            self.btn_profile.clicked.connect(self.__btn_page_profile)
+        if hasattr(self, "btn_log_out") and self.btn_log_out:
+            self.btn_log_out.clicked.connect(self.btn_page_logout)
+        
         self.__btn_page_home_arise()
 
     def __btn_page_profile(self):
@@ -393,10 +403,6 @@ class MyWindow(QtWidgets.QMainWindow):
         # Load professor list and show in table when email template page is opened
         if hasattr(self, 'professorList') and self.professorList:
             self.professorList.load_professor_list_from_db()
-
-    def btn_page_expriences(self):
-        self._set_active_nav(self.btn_expriences, "Experiences", self.page_write_your_exprience)
-        self.stacked_content.setCurrentWidget(self.page_write_your_exprience)
 
     def btn_page_results(self):
         self._set_active_nav(self.btn_results, "Results", self.page_results)
@@ -539,9 +545,7 @@ class MyWindow(QtWidgets.QMainWindow):
             getattr(self, "btn_professor_list", None): QtWidgets.QStyle.StandardPixmap.SP_DirIcon,
             getattr(self, "btn_prepare_send_email", None): QtWidgets.QStyle.StandardPixmap.SP_ArrowForward,
             getattr(self, "btn_statics", None): QtWidgets.QStyle.StandardPixmap.SP_DesktopIcon,
-            getattr(self, "btn_expriences", None): QtWidgets.QStyle.StandardPixmap.SP_FileDialogInfoView,
             getattr(self, "btn_results", None): QtWidgets.QStyle.StandardPixmap.SP_DialogApplyButton,
-            getattr(self, "btn_profile", None): QtWidgets.QStyle.StandardPixmap.SP_FileDialogContentsView,
         }
 
         for button, icon_enum in icon_mapping.items():
@@ -549,6 +553,75 @@ class MyWindow(QtWidgets.QMainWindow):
                 continue
             button.setIcon(self.style().standardIcon(icon_enum))
             button.setIconSize(QtCore.QSize(20, 20))
+    
+    def _setup_bottom_menu_buttons(self):
+        """Setup profile and logout buttons at the bottom of the left menu"""
+        # Find the menu widget (left menu container)
+        menu_widget = getattr(self, "widget_menu", None)
+        if not menu_widget:
+            # Try alternative names
+            menu_widget = self.findChild(QtWidgets.QWidget, "widget_menu")
+            if not menu_widget:
+                menu_widget = self.findChild(QtWidgets.QWidget, "left_menu_comprehensive")
+        
+        if not menu_widget:
+            print("Warning: Menu widget not found. Cannot position bottom buttons.")
+            return
+        
+        # Get the layout of the menu widget
+        menu_layout = menu_widget.layout()
+        if not menu_layout:
+            # Create a vertical layout if none exists
+            menu_layout = QtWidgets.QVBoxLayout(menu_widget)
+            menu_layout.setContentsMargins(0, 0, 0, 0)
+            menu_layout.setSpacing(0)
+        
+        # Add stretch to push buttons to bottom
+        menu_layout.addStretch()
+        
+        # Style and add bottom menu buttons
+        bottom_button_style = f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {UIStyleManager.COLORS['text_muted']};
+                border: none;
+                border-radius: {UIStyleManager.RADIUS['lg']};
+                padding: {UIStyleManager.SPACING['md']} {UIStyleManager.SPACING['xl']};
+                text-align: left;
+                font-weight: {UIStyleManager.FONTS['weight_medium']};
+                font-size: {UIStyleManager.FONTS['size_base']};
+                margin-top: 8px;
+            }}
+            QPushButton:hover {{
+                background-color: rgba(37, 99, 235, 0.15);
+                color: {UIStyleManager.COLORS['text_primary']};
+            }}
+            QPushButton[active="true"] {{
+                background-color: {UIStyleManager.COLORS['bg_active']};
+                color: {UIStyleManager.COLORS['text_primary']};
+            }}
+        """
+        
+        # Setup profile button
+        if hasattr(self, "btn_profile") and self.btn_profile:
+            self.btn_profile.setStyleSheet(bottom_button_style)
+            self.btn_profile.setIcon(self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_FileDialogContentsView))
+            self.btn_profile.setIconSize(QtCore.QSize(20, 20))
+            # Ensure it's in the layout (if not already)
+            if menu_layout.indexOf(self.btn_profile) == -1:
+                menu_layout.addWidget(self.btn_profile)
+        
+        # Setup logout button
+        if hasattr(self, "btn_log_out") and self.btn_log_out:
+            self.btn_log_out.setStyleSheet(bottom_button_style)
+            self.btn_log_out.setIcon(self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_DialogCloseButton))
+            self.btn_log_out.setIconSize(QtCore.QSize(20, 20))
+            # Ensure it's in the layout (if not already)
+            if menu_layout.indexOf(self.btn_log_out) == -1:
+                menu_layout.addWidget(self.btn_log_out)
+        
+        # Add a small spacer at the bottom for better appearance
+        menu_layout.addSpacing(10)
 
 
 class Dashboard:

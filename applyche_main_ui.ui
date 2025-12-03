@@ -3004,27 +3004,27 @@ height:25px;
                </property>
                <item>
                 <widget class="QPushButton" name="btn_email_info_back">
-                 <property name="text">
-                  <string>Back</string>
-                 </property>
                  <property name="minimumSize">
                   <size>
                    <width>120</width>
                    <height>48</height>
                   </size>
                  </property>
+                 <property name="text">
+                  <string>Back</string>
+                 </property>
                 </widget>
                </item>
                <item>
                 <widget class="QPushButton" name="btn_send_test">
-                 <property name="text">
-                  <string>Start Sending Test Emails</string>
-                 </property>
                  <property name="minimumSize">
                   <size>
                    <width>200</width>
                    <height>48</height>
                   </size>
+                 </property>
+                 <property name="text">
+                  <string>Start Sending Test Emails</string>
                  </property>
                 </widget>
                </item>
@@ -3043,14 +3043,14 @@ height:25px;
                </item>
                <item>
                 <widget class="QPushButton" name="btn_send_email">
-                 <property name="text">
-                  <string>Start Sending Emails</string>
-                 </property>
                  <property name="minimumSize">
                   <size>
                    <width>200</width>
                    <height>48</height>
                   </size>
+                 </property>
+                 <property name="text">
+                  <string>Start Sending Emails</string>
                  </property>
                 </widget>
                </item>

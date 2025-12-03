@@ -2432,6 +2432,12 @@ class Professor_lists():
         # Add country_city_applyche column if it doesn't exist
         if 'country_city_applyche' not in df.columns:
             df['country_city_applyche'] = None
+        if 'applyche_description' not in df.columns:
+            df['applyche_description'] = None
+        if 'answered' not in df.columns:
+            df["answered"] = None
+        if 'answer_text' not in df.columns:
+            df["answer_text"]= None
 
         # Populate country_city_applyche based on professor_email
         for idx, row in df.iterrows():

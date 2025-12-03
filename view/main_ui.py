@@ -23,6 +23,8 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QFrame,
     QPushButton,
+    QTextEdit,
+    QLabel,
 )
 
 from controller.professors_controller import ProfessorsController
@@ -31,7 +33,61 @@ from events.event_bus import EventBus
 from middle_wares.middle_info_pass import middle_info_pass
 from api_client import ApplyCheAPIClient
 from view.ui_style_manager import UIStyleManager
+from utility.university_location import get_country_city_string
 import resources
+
+
+class WarningsDialog(QDialog):
+    """Dialog to display all warnings from CSV/Excel upload"""
+    def __init__(self, parent=None, warnings=None):
+        super().__init__(parent)
+        self.setWindowTitle("Upload Warnings")
+        self.setMinimumWidth(600)
+        self.setMinimumHeight(400)
+        
+        layout = QVBoxLayout(self)
+        
+        # Title
+        title_label = QLabel("Upload Warnings")
+        title_label.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 10px;")
+        layout.addWidget(title_label)
+        
+        # Warnings text area
+        if warnings:
+            warnings_text = QTextEdit()
+            warnings_text.setReadOnly(True)
+            warnings_text.setPlainText("\n".join(warnings))
+            warnings_text.setStyleSheet("""
+                background-color: #fff3cd; 
+                padding: 10px; 
+                border: 1px solid #ffc107;
+                color: black;
+            """)
+            layout.addWidget(warnings_text)
+        else:
+            no_warnings_label = QLabel("No warnings found.")
+            no_warnings_label.setStyleSheet("color: green; font-size: 14px; padding: 10px;")
+            layout.addWidget(no_warnings_label)
+        
+        # OK button
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        ok_button = QPushButton("OK")
+        ok_button.setStyleSheet("""
+            QPushButton {
+                background-color: #007bff;
+                color: white;
+                padding: 8px 20px;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #0056b3;
+            }
+        """)
+        ok_button.clicked.connect(self.accept)
+        button_layout.addWidget(ok_button)
+        layout.addLayout(button_layout)
 
 
 class LoadingOverlay(QtWidgets.QWidget):
@@ -2256,6 +2312,8 @@ class Professor_lists():
     
     def upload_data_from_local(self):
         """Upload CSV/Excel file with file size limits, folder cleanup, and rate limiting"""
+        warnings = []  # Collect all warnings here
+        
         if not self.user_email:
             QMessageBox.warning(
                 self.widget,
@@ -2277,21 +2335,17 @@ class Professor_lists():
         # Check rate limit
         allowed, rate_msg = self.file_manager.check_rate_limit(self.user_email)
         if not allowed:
-            QMessageBox.warning(
-                self.widget,
-                "Upload Limit Reached",
-                rate_msg
-            )
+            warnings.append(f"Upload Limit Reached: {rate_msg}")
+            dialog = WarningsDialog(self.widget, warnings)
+            dialog.exec()
             return
 
         # Check file size
         valid_size, size_msg = self.file_manager.check_file_size(file_path)
         if not valid_size:
-            QMessageBox.warning(
-                self.widget,
-                "File Too Large",
-                size_msg
-            )
+            warnings.append(f"File Too Large: {size_msg}")
+            dialog = WarningsDialog(self.widget, warnings)
+            dialog.exec()
             return
 
         # Process file first to validate it
@@ -2302,20 +2356,117 @@ class Professor_lists():
             headers = values["header"]
             nans = values["nans"]
         except Exception as e:
+            warnings.append(f"Failed to read file: {str(e)}")
+            dialog = WarningsDialog(self.widget, warnings)
+            dialog.exec()
+            return
+
+        # Check for professor_email column (case-insensitive)
+        professor_email_col = None
+        for col in df.columns:
+            if col.lower().strip() == 'professor_email':
+                professor_email_col = col
+                break
+        
+        if professor_email_col is None:
             QMessageBox.critical(
                 self.widget,
-                "Error",
-                f"Failed to read file:\n{str(e)}"
+                "Missing Required Column",
+                "There is no professor_email column. Please create (or rename) a column called professor_email containing professor emails."
             )
             return
 
-        # Show warnings for empty columns
+        # Check for country_city column and validate format
+        country_city_col = None
+        for col in df.columns:
+            if col.lower().strip() == 'country_city':
+                country_city_col = col
+                break
+        
+        country_city_warning = None
+        if country_city_col is None:
+            # Column is missing
+            country_city_warning = "If country_city is empty I cannot send email based on professor local time and I have to send email based on your local time."
+        else:
+            # Validate format: should be "country/city"
+            invalid_rows = []
+            empty_rows = []
+            for idx, row in df.iterrows():
+                value = row[country_city_col]
+                if pd.notna(value) and value:
+                    value_str = str(value).strip()
+                    # Check if format is "country/city" (contains exactly one forward slash)
+                    if '/' not in value_str or value_str.count('/') != 1:
+                        invalid_rows.append(idx + 1)  # +1 for 1-based row numbers
+                else:
+                    empty_rows.append(idx + 1)
+            
+            if invalid_rows or empty_rows:
+                warning_parts = []
+                if invalid_rows:
+                    warning_parts.append(f"Found invalid format in row(s): {', '.join(map(str, invalid_rows[:10]))}"
+                                       f"{' and more...' if len(invalid_rows) > 10 else ''}")
+                if empty_rows:
+                    warning_parts.append(f"Found empty values in row(s): {', '.join(map(str, empty_rows[:10]))}"
+                                       f"{' and more...' if len(empty_rows) > 10 else ''}")
+                
+                country_city_warning = f"If country_city is empty I cannot send email based on professor local time and I have to send email based on your local time.\n\n" + "\n".join(warning_parts) + "\n\nPlease ensure the format is 'country/city' (e.g., 'iran/tehran', 'usa/new york')."
+        
+        # Add country_city warning to warnings list (not as popup, as per user request)
+        if country_city_warning:
+            warnings.append(country_city_warning)
+
+        # Add required columns if they don't exist
+        required_columns = {
+            'main_mail_time': None,
+            'reminder_one_time': None,
+            'reminder_second_time': None,
+            'reminder_thrid_time': None,
+            'message_id': None
+        }
+        
+        for col_name in required_columns.keys():
+            if col_name not in df.columns:
+                df[col_name] = None
+
+        # Add country_city_applyche column if it doesn't exist
+        if 'country_city_applyche' not in df.columns:
+            df['country_city_applyche'] = None
+
+        # Populate country_city_applyche based on professor_email
+        for idx, row in df.iterrows():
+            email = row[professor_email_col]
+            if pd.notna(email) and email:
+                country_city = get_country_city_string(str(email))
+                df.at[idx, 'country_city_applyche'] = country_city
+
+        # Validate that first row is header (pandas requirement)
+        if len(df.columns) == 0:
+            warnings.append("File must have a header row as the first row. Please ensure your CSV/Excel file has column names in the first row.")
+            dialog = WarningsDialog(self.widget, warnings)
+            dialog.exec()
+            return
+        
+        # Save modified dataframe back to the original file in raw, simple format
+        try:
+            if file_path.endswith('.xlsx'):
+                # Save as raw Excel without formatting
+                df.to_excel(file_path, index=False, engine='openpyxl', header=True)
+            elif file_path.endswith('.csv'):
+                # Save as raw CSV without formatting
+                df.to_csv(file_path, index=False, header=True, encoding='utf-8')
+            elif file_path.endswith('.xls'):
+                # For .xls files, convert to xlsx format (raw)
+                new_path = file_path.replace('.xls', '.xlsx')
+                df.to_excel(new_path, index=False, engine='openpyxl', header=True)
+                if new_path != file_path:
+                    file_path = new_path
+        except Exception as e:
+            warnings.append(f"Failed to save modifications to file: {str(e)}. Continuing with original file...")
+
+        # Collect warnings for empty columns
         for k in nans.keys():
-            QMessageBox.warning(
-                self.widget,
-                "Some columns are empty",
-                f"I have found {len(nans[k])} empty value(s) in '{k}' column. This may affect your email process!!"
-            )
+            warnings.append(f"Found {len(nans[k])} empty value(s) in '{k}' column. This may affect your email process!")
 
         # Save file to uploaded_folders/{user_email}/professor_list/
         success, save_msg, saved_path = self.file_manager.save_file(
@@ -2325,12 +2476,22 @@ class Professor_lists():
         )
 
         if not success:
-            QMessageBox.warning(
-                self.widget,
-                "Save Failed",
-                save_msg
-            )
+            warnings.append(f"Save Failed: {save_msg}")
+            dialog = WarningsDialog(self.widget, warnings)
+            dialog.exec()
             return
+
+        # Ensure saved_path has the modified dataframe (save again to be safe) in raw format
+        if saved_path:
+            try:
+                if str(saved_path).endswith('.xlsx'):
+                    # Save as raw Excel without formatting
+                    df.to_excel(str(saved_path), index=False, engine='openpyxl', header=True)
+                elif str(saved_path).endswith('.csv'):
+                    # Save as raw CSV without formatting
+                    df.to_csv(str(saved_path), index=False, header=True, encoding='utf-8')
+            except Exception as e:
+                print(f"Warning: Could not update saved file with modifications: {e}")
 
         # Save to database via API
         db_saved = False
@@ -2347,11 +2508,7 @@ class Professor_lists():
                     print("API not available - file saved locally but not to database")
             except Exception as e:
                 print(f"Error saving to database: {e}")
-                QMessageBox.warning(
-                    self.widget,
-                    "Database Save Warning",
-                    f"File saved locally but failed to save to database:\n{str(e)}"
-                )
+                warnings.append(f"File saved locally but failed to save to database: {str(e)}")
 
         # Store in memory for immediate use
         df.columns = df.columns.str.strip().str.lower()
@@ -2360,20 +2517,34 @@ class Professor_lists():
         # Populate table
         self._populate_table(df)
 
-        # Show success message
-        stats = self.file_manager.get_user_upload_stats(self.user_email)
-        success_msg = f"✅ File uploaded successfully!\n\n"
-        success_msg += f"Saved to: {saved_path}\n"
-        success_msg += f"File size: {size_msg}\n"
-        if db_saved:
-            success_msg += f"✅ Saved to database\n"
-        success_msg += f"\nUpload stats: {stats['today_count']}/{stats['max_per_day']} uploads today"
-        
-        QMessageBox.information(
-            self.widget,
-            "Upload Successful",
-            success_msg
-        )
+        # Show warnings dialog if there are any warnings, otherwise show success message
+        if warnings:
+            dialog = WarningsDialog(self.widget, warnings)
+            dialog.exec()
+        else:
+            # Show success popup with green OK button
+            success_msg = QMessageBox(self.widget)
+            success_msg.setWindowTitle("Upload Successful")
+            success_msg.setText("Your CSV/Excel satisfied all requirements!")
+            success_msg.setIcon(QMessageBox.Icon.Information)
+            success_msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            # Style the OK button to be green
+            ok_button = success_msg.button(QMessageBox.StandardButton.Ok)
+            if ok_button:
+                ok_button.setStyleSheet("""
+                    QPushButton {
+                        background-color: #28a745;
+                        color: white;
+                        padding: 8px 20px;
+                        border-radius: 4px;
+                        font-size: 14px;
+                        min-width: 80px;
+                    }
+                    QPushButton:hover {
+                        background-color: #218838;
+                    }
+                """)
+            success_msg.exec()
 
     def _populate_table(self, df: pd.DataFrame):
         self.tbl_professors_list.clear()

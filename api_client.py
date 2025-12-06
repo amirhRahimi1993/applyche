@@ -241,6 +241,35 @@ class ApplyCheAPIClient:
         """Update queue item status"""
         return self._patch(f"/api/email-queue/{queue_id}/status?status={status}&user_email={user_email}", {})
     
+    def create_send_log(
+        self,
+        user_email: str,
+        sent_to: str,
+        send_type: int,
+        subject: Optional[str] = None,
+        body: Optional[str] = None,
+        template_id: Optional[int] = None,
+        delivery_status: int = 1,
+        message_id: Optional[str] = None,
+        answer: Optional[str] = None
+    ) -> Dict:
+        """Create a send log entry"""
+        return self._post("/api/email-queue/logs/", {
+            "user_email": user_email,
+            "sent_to": sent_to,
+            "subject": subject,
+            "body": body,
+            "template_id": template_id,
+            "send_type": send_type,
+            "delivery_status": delivery_status,
+            "message_id": message_id,
+            "answer": answer
+        })
+    
+    def update_send_log_answer(self, log_id: int, answer: str, user_email: str) -> Dict:
+        """Update the answer field in a send log entry"""
+        return self._patch(f"/api/email-queue/logs/{log_id}/answer?answer={answer}&user_email={user_email}", {})
+    
     def get_send_logs(self, user_email: str, limit: int = 100, send_type: Optional[int] = None) -> List[Dict]:
         """Get send logs"""
         params = {"limit": limit}

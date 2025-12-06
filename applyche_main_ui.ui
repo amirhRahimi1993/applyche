@@ -275,35 +275,6 @@
               </widget>
              </item>
              <item>
-              <widget class="QPushButton" name="btn_expriences">
-               <property name="font">
-                <font>
-                 <pointsize>-1</pointsize>
-                 <bold>true</bold>
-                </font>
-               </property>
-               <property name="text">
-                <string>Your Expriences</string>
-               </property>
-               <property name="icon">
-                <iconset resource="resources.qrc">
-                 <normaloff>:/images/images/write_your_Exprience.png</normaloff>:/images/images/write_your_Exprience.png</iconset>
-               </property>
-               <property name="iconSize">
-                <size>
-                 <width>61</width>
-                 <height>61</height>
-                </size>
-               </property>
-               <property name="checkable">
-                <bool>true</bool>
-               </property>
-               <property name="autoExclusive">
-                <bool>true</bool>
-               </property>
-              </widget>
-             </item>
-             <item>
               <widget class="QPushButton" name="btn_results">
                <property name="font">
                 <font>
@@ -876,7 +847,7 @@ margin-top:5;
          <string notr="true"/>
         </property>
         <property name="currentIndex">
-         <number>10</number>
+         <number>4</number>
         </property>
         <widget class="QWidget" name="page_Dashboard">
          <widget class="QWidget" name="widget_main" native="true">
@@ -2910,148 +2881,154 @@ height:25px;
            </widget>
           </widget>
           <widget class="QWidget" name="page_email_info">
-           <widget class="QPushButton" name="btn_send_email">
-            <property name="geometry">
-             <rect>
-              <x>490</x>
-              <y>450</y>
-              <width>341</width>
-              <height>81</height>
-             </rect>
+           <layout class="QVBoxLayout" name="email_info_main_layout">
+            <property name="spacing">
+             <number>24</number>
             </property>
-            <property name="font">
-             <font>
-              <pointsize>12</pointsize>
-              <bold>true</bold>
-             </font>
+            <property name="leftMargin">
+             <number>32</number>
             </property>
-            <property name="styleSheet">
-             <string notr="true">background-color:green</string>
+            <property name="topMargin">
+             <number>24</number>
             </property>
-            <property name="text">
-             <string>Start Sending Emails</string>
+            <property name="rightMargin">
+             <number>32</number>
             </property>
-           </widget>
-           <widget class="QLabel" name="label_31">
-            <property name="geometry">
-             <rect>
-              <x>0</x>
-              <y>10</y>
-              <width>891</width>
-              <height>61</height>
-             </rect>
+            <property name="bottomMargin">
+             <number>24</number>
             </property>
-            <property name="font">
-             <font>
-              <pointsize>16</pointsize>
-              <bold>true</bold>
-             </font>
-            </property>
-            <property name="text">
-             <string>Important: Due to privacy, the information of this page will not save on our servers</string>
-            </property>
-           </widget>
-           <widget class="QPushButton" name="btn_email_info_back">
-            <property name="geometry">
-             <rect>
-              <x>0</x>
-              <y>450</y>
-              <width>101</width>
-              <height>81</height>
-             </rect>
-            </property>
-            <property name="font">
-             <font>
-              <pointsize>12</pointsize>
-              <bold>true</bold>
-             </font>
-            </property>
-            <property name="styleSheet">
-             <string notr="true">background-color:blue</string>
-            </property>
-            <property name="text">
-             <string>Back</string>
-            </property>
-           </widget>
-           <widget class="QPushButton" name="btn_send_test">
-            <property name="geometry">
-             <rect>
-              <x>120</x>
-              <y>450</y>
-              <width>341</width>
-              <height>81</height>
-             </rect>
-            </property>
-            <property name="font">
-             <font>
-              <pointsize>12</pointsize>
-              <bold>true</bold>
-             </font>
-            </property>
-            <property name="styleSheet">
-             <string notr="true">background-color:purple
-</string>
-            </property>
-            <property name="text">
-             <string>Start Sending Test Emails</string>
-            </property>
-           </widget>
-           <widget class="QWidget" name="layoutWidget">
-            <property name="geometry">
-             <rect>
-              <x>30</x>
-              <y>170</y>
-              <width>831</width>
-              <height>111</height>
-             </rect>
-            </property>
-            <layout class="QVBoxLayout" name="verticalLayout_13">
-             <item>
-              <widget class="QLabel" name="label_40">
-               <property name="font">
-                <font>
-                 <pointsize>15</pointsize>
-                 <bold>true</bold>
-                </font>
+            <item>
+             <widget class="QLabel" name="label_email_info_notice">
+              <property name="text">
+               <string>Important: Due to privacy, the information of this page will not save on our servers</string>
+              </property>
+              <property name="wordWrap">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QWidget" name="email_info_form_container" native="true">
+              <layout class="QVBoxLayout" name="email_info_form_layout">
+               <property name="spacing">
+                <number>20</number>
                </property>
-               <property name="text">
-                <string>App Password:</string>
+               <item>
+                <widget class="QWidget" name="email_field_container" native="true">
+                 <layout class="QVBoxLayout" name="email_field_layout">
+                  <property name="spacing">
+                   <number>8</number>
+                  </property>
+                  <item>
+                   <widget class="QLabel" name="label_email_field">
+                    <property name="text">
+                     <string>Email:</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLineEdit" name="txt_email"/>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QWidget" name="password_field_container" native="true">
+                 <layout class="QVBoxLayout" name="password_field_layout">
+                  <property name="spacing">
+                   <number>8</number>
+                  </property>
+                  <item>
+                   <widget class="QLabel" name="label_password_field">
+                    <property name="text">
+                     <string>App Password:</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLineEdit" name="txt_password"/>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <spacer name="email_info_spacer">
+              <property name="orientation">
+               <enum>Qt::Orientation::Vertical</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>20</width>
+                <height>40</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QWidget" name="email_info_buttons_container" native="true">
+              <layout class="QHBoxLayout" name="email_info_buttons_layout">
+               <property name="spacing">
+                <number>16</number>
                </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QLineEdit" name="txt_password"/>
-             </item>
-            </layout>
-           </widget>
-           <widget class="QWidget" name="layoutWidget">
-            <property name="geometry">
-             <rect>
-              <x>30</x>
-              <y>90</y>
-              <width>831</width>
-              <height>81</height>
-             </rect>
-            </property>
-            <layout class="QVBoxLayout" name="verticalLayout_14">
-             <item>
-              <widget class="QLabel" name="label_35">
-               <property name="font">
-                <font>
-                 <pointsize>15</pointsize>
-                 <bold>true</bold>
-                </font>
-               </property>
-               <property name="text">
-                <string>Email:</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QLineEdit" name="txt_email"/>
-             </item>
-            </layout>
-           </widget>
+               <item>
+                <widget class="QPushButton" name="btn_email_info_back">
+                 <property name="minimumSize">
+                  <size>
+                   <width>120</width>
+                   <height>48</height>
+                  </size>
+                 </property>
+                 <property name="text">
+                  <string>Back</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="btn_send_test">
+                 <property name="minimumSize">
+                  <size>
+                   <width>200</width>
+                   <height>48</height>
+                  </size>
+                 </property>
+                 <property name="text">
+                  <string>Start Sending Test Emails</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <spacer name="email_info_button_spacer">
+                 <property name="orientation">
+                  <enum>Qt::Orientation::Horizontal</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>40</width>
+                   <height>20</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+               <item>
+                <widget class="QPushButton" name="btn_send_email">
+                 <property name="minimumSize">
+                  <size>
+                   <width>200</width>
+                   <height>48</height>
+                  </size>
+                 </property>
+                 <property name="text">
+                  <string>Start Sending Emails</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+           </layout>
           </widget>
           <widget class="QWidget" name="page_log">
            <widget class="QPlainTextEdit" name="txt_log">
@@ -3196,22 +3173,6 @@ font:bold;</string>
    </hints>
   </connection>
   <connection>
-   <sender>btn_expriences</sender>
-   <signal>toggled(bool)</signal>
-   <receiver>btn_left_expriences</receiver>
-   <slot>setChecked(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>148</x>
-     <y>508</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>59</x>
-     <y>508</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
    <sender>btn_statics_left</sender>
    <signal>toggled(bool)</signal>
    <receiver>btn_statics</receiver>
@@ -3256,22 +3217,6 @@ font:bold;</string>
     <hint type="destinationlabel">
      <x>150</x>
      <y>196</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>btn_left_expriences</sender>
-   <signal>toggled(bool)</signal>
-   <receiver>btn_expriences</receiver>
-   <slot>setChecked(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>57</x>
-     <y>479</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>136</x>
-     <y>479</y>
     </hint>
    </hints>
   </connection>

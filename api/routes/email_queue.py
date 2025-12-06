@@ -9,6 +9,7 @@ from api.database import get_db
 from api.models import (
     EmailQueueCreate,
     EmailQueueResponse,
+    SendLogCreate,
     SendLogResponse,
     MessageResponse
 )
@@ -122,6 +123,46 @@ async def update_queue_status(
         raise HTTPException(status_code=500, detail=f"Error updating status: {str(e)}")
 
 
+@router.post("/logs/", response_model=SendLogResponse)
+async def create_send_log(
+    log: SendLogCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Create a send log entry
+    """
+    try:
+        db_log = SendLog(
+            user_email=log.user_email,
+            sent_to=log.sent_to,
+            subject=log.subject,
+            body=log.body,
+            template_id=log.template_id,
+            send_type=log.send_type,
+            delivery_status=log.delivery_status,
+            message_id=log.message_id,
+            answer=log.answer
+        )
+        db.add(db_log)
+        db.commit()
+        db.refresh(db_log)
+        
+        return SendLogResponse(
+            id=db_log.id,
+            user_email=db_log.user_email,
+            sent_to=db_log.sent_to,
+            sent_time=db_log.sent_time,
+            subject=db_log.subject,
+            send_type=db_log.send_type,
+            delivery_status=db_log.delivery_status,
+            message_id=db_log.message_id,
+            answer=db_log.answer
+        )
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error creating send log: {str(e)}")
+
+
 @router.get("/logs/{user_email}", response_model=List[SendLogResponse])
 async def get_send_logs(
     user_email: str,
@@ -148,9 +189,41 @@ async def get_send_logs(
                 sent_time=log.sent_time,
                 subject=log.subject,
                 send_type=log.send_type,
-                delivery_status=log.delivery_status
+                delivery_status=log.delivery_status,
+                message_id=log.message_id,
+                answer=log.answer
             )
             for log in logs
         ]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching send logs: {str(e)}")
+
+
+@router.patch("/logs/{log_id}/answer", response_model=MessageResponse)
+async def update_send_log_answer(
+    log_id: int,
+    answer: str = Query(...),
+    user_email: str = Query(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Update the answer field in a send log entry
+    """
+    try:
+        log_entry = db.query(SendLog).filter(
+            SendLog.id == log_id,
+            SendLog.user_email == user_email
+        ).first()
+        
+        if not log_entry:
+            raise HTTPException(status_code=404, detail="Send log entry not found")
+        
+        log_entry.answer = answer
+        db.commit()
+        
+        return MessageResponse(message="Answer updated successfully")
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating answer: {str(e)}")

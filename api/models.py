@@ -129,6 +129,19 @@ class EmailQueueResponse(BaseModel):
 
 
 # Send Log Models
+class SendLogCreate(BaseModel):
+    """Create send log request"""
+    user_email: EmailStr
+    sent_to: EmailStr
+    subject: Optional[str] = None
+    body: Optional[str] = None
+    template_id: Optional[int] = None
+    send_type: int
+    delivery_status: int = 1  # Default to 1 (sent)
+    message_id: Optional[str] = None
+    answer: Optional[str] = None
+
+
 class SendLogResponse(BaseModel):
     """Send log response"""
     id: int
@@ -138,6 +151,8 @@ class SendLogResponse(BaseModel):
     subject: Optional[str]
     send_type: int
     delivery_status: int
+    message_id: Optional[str] = None
+    answer: Optional[str] = None
 
 
 # Professor Models

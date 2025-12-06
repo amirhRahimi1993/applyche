@@ -23,14 +23,74 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QFrame,
     QPushButton,
+    QTextEdit,
+    QLabel,
 )
 
 from controller.professors_controller import ProfessorsController
+from controller.email_sender import EmailSender
 from middle_wares.coordinator_sending_mails import Coordinator
 from events.event_bus import EventBus
 from middle_wares.middle_info_pass import middle_info_pass
 from api_client import ApplyCheAPIClient
+from view.ui_style_manager import UIStyleManager
+from utility.university_location import get_country_city_string
 import resources
+import os
+import threading
+
+
+class WarningsDialog(QDialog):
+    """Dialog to display all warnings from CSV/Excel upload"""
+    def __init__(self, parent=None, warnings=None):
+        super().__init__(parent)
+        self.setWindowTitle("Upload Warnings")
+        self.setMinimumWidth(600)
+        self.setMinimumHeight(400)
+        
+        layout = QVBoxLayout(self)
+        
+        # Title
+        title_label = QLabel("Upload Warnings")
+        title_label.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 10px;")
+        layout.addWidget(title_label)
+        
+        # Warnings text area
+        if warnings:
+            warnings_text = QTextEdit()
+            warnings_text.setReadOnly(True)
+            warnings_text.setPlainText("\n".join(warnings))
+            warnings_text.setStyleSheet("""
+                background-color: #fff3cd; 
+                padding: 10px; 
+                border: 1px solid #ffc107;
+                color: black;
+            """)
+            layout.addWidget(warnings_text)
+        else:
+            no_warnings_label = QLabel("No warnings found.")
+            no_warnings_label.setStyleSheet("color: green; font-size: 14px; padding: 10px;")
+            layout.addWidget(no_warnings_label)
+        
+        # OK button
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        ok_button = QPushButton("OK")
+        ok_button.setStyleSheet("""
+            QPushButton {
+                background-color: #007bff;
+                color: white;
+                padding: 8px 20px;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #0056b3;
+            }
+        """)
+        ok_button.clicked.connect(self.accept)
+        button_layout.addWidget(ok_button)
+        layout.addLayout(button_layout)
 
 
 class LoadingOverlay(QtWidgets.QWidget):
@@ -270,13 +330,20 @@ class MyWindow(QtWidgets.QMainWindow):
             getattr(self, "btn_professor_list", None),
             getattr(self, "btn_prepare_send_email", None),
             getattr(self, "btn_statics", None),
-            getattr(self, "btn_expriences", None),
             getattr(self, "btn_results", None),
-            getattr(self, "btn_profile", None),
         ]
         self._nav_buttons = [btn for btn in self._nav_buttons if btn is not None]
+        
+        # Bottom menu buttons (Profile and Logout) - separate from nav buttons
+        self._bottom_menu_buttons = [
+            getattr(self, "btn_profile", None),
+            getattr(self, "btn_log_out", None),
+        ]
+        self._bottom_menu_buttons = [btn for btn in self._bottom_menu_buttons if btn is not None]
+        
         self._apply_global_styles()
         self._assign_nav_icons()
+        self._setup_bottom_menu_buttons()
 
         # Enforce stretch (20% vs 80%)
         layout = self.widget_content.layout()
@@ -325,14 +392,17 @@ class MyWindow(QtWidgets.QMainWindow):
 
         self.btn_home.clicked.connect(self.__btn_page_home_arise)
         self.btn_email_template.clicked.connect(self.__btn_page_email_template)
-        self.btn_expriences.clicked.connect(self.btn_page_expriences)
         self.btn_results.clicked.connect(self.btn_page_results)
         self.btn_prepare_send_email.clicked.connect(self.btn_page_prepare_send_email)
         self.btn_statics.clicked.connect(self.btn_page_statics)
         self.btn_professor_list.clicked.connect(self.btn_page_professor_list)
 
-        self.btn_profile.clicked.connect(self.__btn_page_profile)
-        self.btn_log_out.clicked.connect(self.btn_page_logout)
+        # Connect bottom menu buttons
+        if hasattr(self, "btn_profile") and self.btn_profile:
+            self.btn_profile.clicked.connect(self.__btn_page_profile)
+        if hasattr(self, "btn_log_out") and self.btn_log_out:
+            self.btn_log_out.clicked.connect(self.btn_page_logout)
+        
         self.__btn_page_home_arise()
 
     def __btn_page_profile(self):
@@ -356,10 +426,6 @@ class MyWindow(QtWidgets.QMainWindow):
         # Load professor list and show in table when email template page is opened
         if hasattr(self, 'professorList') and self.professorList:
             self.professorList.load_professor_list_from_db()
-
-    def btn_page_expriences(self):
-        self._set_active_nav(self.btn_expriences, "Experiences", self.page_write_your_exprience)
-        self.stacked_content.setCurrentWidget(self.page_write_your_exprience)
 
     def btn_page_results(self):
         self._set_active_nav(self.btn_results, "Results", self.page_results)
@@ -484,85 +550,63 @@ class MyWindow(QtWidgets.QMainWindow):
             self.page_title_label.setText(title)
 
     def _apply_global_styles(self):
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #0F172A;
-            }
-            #widget_main_value {
-                background-color: #0B1120;
-                border-radius: 24px;
-            }
-            #widget_content {
-                background-color: #0B1120;
-                border-radius: 24px;
-            }
-            #widget_header {
-                background-color: #0B1120;
-                border-radius: 18px;
-            }
-            #lineEdit {
-                background-color: #1F2937;
-                color: #E5E7EB;
-                border: 1px solid #374151;
-                border-radius: 14px;
-                padding: 12px 16px;
-            }
-            #btn_search_professor {
-                background-color: #2563EB;
-                color: #FFFFFF;
-                border-radius: 14px;
-                padding: 12px 26px;
-                font-weight: bold;
-            }
-            #btn_search_professor:hover {
-                background-color: #1D4ED8;
-            }
-            #btn_notification {
+        """Apply global styles using the centralized style manager"""
+        # Apply global stylesheet
+        self.setStyleSheet(UIStyleManager.get_global_stylesheet())
+        
+        # Apply additional component-specific styles
+        additional_styles = f"""
+            #widget_main_value {{
+                background-color: {UIStyleManager.COLORS['bg_primary']};
+                border-radius: {UIStyleManager.RADIUS['2xl']};
+            }}
+            #widget_content {{
+                background-color: {UIStyleManager.COLORS['bg_primary']};
+                border-radius: {UIStyleManager.RADIUS['2xl']};
+            }}
+            #widget_header {{
+                background-color: {UIStyleManager.COLORS['bg_primary']};
+                border-radius: {UIStyleManager.RADIUS['xl']};
+            }}
+            #lineEdit {{
+                {UIStyleManager.get_input_style()}
+            }}
+            #btn_search_professor {{
+                {UIStyleManager.get_button_secondary_style()}
+            }}
+            #btn_notification {{
                 background-color: transparent;
-            }
-            #widget_menu QPushButton {
-                color: #CBD5F5;
+            }}
+            #widget_menu QPushButton {{
                 background-color: transparent;
+                color: {UIStyleManager.COLORS['text_muted']};
                 border: none;
-                border-radius: 14px;
-                padding: 12px 20px;
+                border-radius: {UIStyleManager.RADIUS['lg']};
+                padding: {UIStyleManager.SPACING['md']} {UIStyleManager.SPACING['xl']};
                 text-align: left;
-                font-weight: 500;
-            }
-            #widget_menu QPushButton:hover {
+                font-weight: {UIStyleManager.FONTS['weight_medium']};
+                font-size: {UIStyleManager.FONTS['size_base']};
+            }}
+            #widget_menu QPushButton:hover {{
                 background-color: rgba(37, 99, 235, 0.15);
-            }
-            #widget_menu QPushButton[active="true"] {
-                background-color: #2563EB;
-                color: #F8FAFC;
-            }
-            QPushButton {
-                background-color: #1D4ED8;
-                color: #F8FAFC;
-                border-radius: 12px;
-                padding: 10px 18px;
-            }
-            QPushButton:disabled {
-                background-color: #1E3A8A;
-                color: #94A3B8;
-            }
-            QTextEdit {
-                background-color: #0F172A;
-                color: #F1F5F9;
-                border: 1px solid #1E293B;
-                border-radius: 14px;
-                padding: 12px;
-            }
-            QStackedWidget {
-                background-color: #020617;
-                border-radius: 18px;
-            }
-            QLabel#lbl_page_title {
-                color: #F8FAFC;
-                font-size: 22px;
-                font-weight: 600;
-            }
-        """)
+                color: {UIStyleManager.COLORS['text_primary']};
+            }}
+            #widget_menu QPushButton[active="true"] {{
+                background-color: {UIStyleManager.COLORS['bg_active']};
+                color: {UIStyleManager.COLORS['text_primary']};
+            }}
+            QTextEdit {{
+                {UIStyleManager.get_input_style()}
+            }}
+            QStackedWidget {{
+                background-color: {UIStyleManager.COLORS['bg_primary']};
+                border-radius: {UIStyleManager.RADIUS['xl']};
+            }}
+            QLabel#lbl_page_title {{
+                {UIStyleManager.get_label_style('2xl', 'semibold')}
+            }}
+        """
+        self.setStyleSheet(self.styleSheet() + additional_styles)
 
     def _assign_nav_icons(self):
         icon_mapping = {
@@ -571,9 +615,7 @@ class MyWindow(QtWidgets.QMainWindow):
             getattr(self, "btn_professor_list", None): QtWidgets.QStyle.StandardPixmap.SP_DirIcon,
             getattr(self, "btn_prepare_send_email", None): QtWidgets.QStyle.StandardPixmap.SP_ArrowForward,
             getattr(self, "btn_statics", None): QtWidgets.QStyle.StandardPixmap.SP_DesktopIcon,
-            getattr(self, "btn_expriences", None): QtWidgets.QStyle.StandardPixmap.SP_FileDialogInfoView,
             getattr(self, "btn_results", None): QtWidgets.QStyle.StandardPixmap.SP_DialogApplyButton,
-            getattr(self, "btn_profile", None): QtWidgets.QStyle.StandardPixmap.SP_FileDialogContentsView,
         }
 
         for button, icon_enum in icon_mapping.items():
@@ -581,6 +623,75 @@ class MyWindow(QtWidgets.QMainWindow):
                 continue
             button.setIcon(self.style().standardIcon(icon_enum))
             button.setIconSize(QtCore.QSize(20, 20))
+    
+    def _setup_bottom_menu_buttons(self):
+        """Setup profile and logout buttons at the bottom of the left menu"""
+        # Find the menu widget (left menu container)
+        menu_widget = getattr(self, "widget_menu", None)
+        if not menu_widget:
+            # Try alternative names
+            menu_widget = self.findChild(QtWidgets.QWidget, "widget_menu")
+            if not menu_widget:
+                menu_widget = self.findChild(QtWidgets.QWidget, "left_menu_comprehensive")
+        
+        if not menu_widget:
+            print("Warning: Menu widget not found. Cannot position bottom buttons.")
+            return
+        
+        # Get the layout of the menu widget
+        menu_layout = menu_widget.layout()
+        if not menu_layout:
+            # Create a vertical layout if none exists
+            menu_layout = QtWidgets.QVBoxLayout(menu_widget)
+            menu_layout.setContentsMargins(0, 0, 0, 0)
+            menu_layout.setSpacing(0)
+        
+        # Add stretch to push buttons to bottom
+        menu_layout.addStretch()
+        
+        # Style and add bottom menu buttons
+        bottom_button_style = f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {UIStyleManager.COLORS['text_muted']};
+                border: none;
+                border-radius: {UIStyleManager.RADIUS['lg']};
+                padding: {UIStyleManager.SPACING['md']} {UIStyleManager.SPACING['xl']};
+                text-align: left;
+                font-weight: {UIStyleManager.FONTS['weight_medium']};
+                font-size: {UIStyleManager.FONTS['size_base']};
+                margin-top: 8px;
+            }}
+            QPushButton:hover {{
+                background-color: rgba(37, 99, 235, 0.15);
+                color: {UIStyleManager.COLORS['text_primary']};
+            }}
+            QPushButton[active="true"] {{
+                background-color: {UIStyleManager.COLORS['bg_active']};
+                color: {UIStyleManager.COLORS['text_primary']};
+            }}
+        """
+        
+        # Setup profile button
+        if hasattr(self, "btn_profile") and self.btn_profile:
+            self.btn_profile.setStyleSheet(bottom_button_style)
+            self.btn_profile.setIcon(self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_FileDialogContentsView))
+            self.btn_profile.setIconSize(QtCore.QSize(20, 20))
+            # Ensure it's in the layout (if not already)
+            if menu_layout.indexOf(self.btn_profile) == -1:
+                menu_layout.addWidget(self.btn_profile)
+        
+        # Setup logout button
+        if hasattr(self, "btn_log_out") and self.btn_log_out:
+            self.btn_log_out.setStyleSheet(bottom_button_style)
+            self.btn_log_out.setIcon(self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_DialogCloseButton))
+            self.btn_log_out.setIconSize(QtCore.QSize(20, 20))
+            # Ensure it's in the layout (if not already)
+            if menu_layout.indexOf(self.btn_log_out) == -1:
+                menu_layout.addWidget(self.btn_log_out)
+        
+        # Add a small spacer at the bottom for better appearance
+        menu_layout.addSpacing(10)
 
 
 class Dashboard:
@@ -2166,15 +2277,104 @@ class Prepare_send_mail(QtWidgets.QWidget):
         self.__start_sending_mails()
 
     def __start_sending_mails(self):
-        # Create coordinator if not already done
-        if not hasattr(self, "coordinator"):
-            self.coordinator = Coordinator(self.bus)
-            self.coordinator.set_view(self)
-
-        info = self.send_information_to_controller()
-        self.coordinator.start_sending(info)
+        """Start sending emails using EmailSender"""
+        # Get data from user
+        self.__get_data_from_user()
+        
+        # Get professor list path from database
+        professor_list_path = None
+        if self.api_client and self.user_email:
+            try:
+                professor_list = self.api_client.get_professor_list(self.user_email)
+                if professor_list and professor_list.get("file_path"):
+                    file_path = professor_list["file_path"]
+                    if os.path.exists(file_path):
+                        professor_list_path = file_path
+            except Exception as e:
+                self.display_log(f"❌ Error getting professor list: {e}")
+                return
+        
+        if not professor_list_path:
+            self.display_log("❌ Error: Professor list not found. Please upload a professor list first.")
+            return
+        
+        # Create EmailSender instance
+        try:
+            self.email_sender = EmailSender(
+                email=self.email,
+                app_password=self.password,
+                professor_list_path=professor_list_path,
+                api_client=self.api_client,
+                user_email=self.user_email
+            )
+            
+            # Handle test mode - modify professor list to use sender email as receiver
+            if self.is_test:
+                # For test mode, we need to temporarily modify the professor_email column
+                # Save original path and create a test copy
+                import shutil
+                test_path = professor_list_path.replace('.xlsx', '_test.xlsx').replace('.csv', '_test.csv')
+                shutil.copy2(professor_list_path, test_path)
+                
+                # Load and modify test file
+                import pandas as pd
+                if test_path.endswith('.xlsx'):
+                    test_df = pd.read_excel(test_path, header=0, engine='openpyxl')
+                else:
+                    test_df = pd.read_csv(test_path, header=0)
+                
+                # Find professor_email column and replace with sender email
+                for col in test_df.columns:
+                    if col.lower().strip() == 'professor_email':
+                        test_df[col] = self.email
+                        break
+                
+                # Save test file
+                if test_path.endswith('.xlsx'):
+                    test_df.to_excel(test_path, index=False, engine='openpyxl', header=True)
+                else:
+                    test_df.to_csv(test_path, index=False, header=True, encoding='utf-8')
+                
+                # Update EmailSender to use test file
+                self.email_sender.professor_list_path = test_path
+                self.email_sender.df = test_df
+                self.display_log("📧 Test mode: Sending emails to yourself")
+            
+            # Convert string values to appropriate types
+            try:
+                txt_number_of_main_mails = int(self.txt_number_of_main_mails) if self.txt_number_of_main_mails else 0
+                txt_number_of_first_reminder = int(self.txt_number_of_first_reminder) if self.txt_number_of_first_reminder else 0
+                txt_number_of_second_reminder = int(self.txt_number_of_second_reminder) if self.txt_number_of_second_reminder else 0
+                txt_number_of_third_reminder = int(self.txt_number_of_third_reminder) if self.txt_number_of_third_reminder else 0
+                txt_period_between_reminders = int(self.txt_period_day) if self.txt_period_day else 7
+            except ValueError:
+                self.display_log("❌ Error: Invalid number format in sending rules")
+                return
+            
+            # Start sending with callback for logging
+            self.email_sender.start_sending(
+                txt_number_of_main_mails=txt_number_of_main_mails,
+                txt_start_time=self.txt_start_time,
+                txt_end_time=self.txt_end_time,
+                is_professor_local_time=self.is_professor_local_time,
+                is_sending_working_day_only=self.is_send_working_day_only,
+                txt_period_between_reminders=txt_period_between_reminders,
+                txt_number_of_first_reminder=txt_number_of_first_reminder,
+                txt_number_of_second_reminder=txt_number_of_second_reminder,
+                txt_number_of_third_reminder=txt_number_of_third_reminder,
+                callback=self._email_sender_callback
+            )
+            
+        except Exception as e:
+            self.display_log(f"❌ Error starting email sender: {e}")
+            import traceback
+            traceback.print_exc()
 
     def __kill_or_continue_sending(self):
+        """Stop sending emails"""
+        if hasattr(self, "email_sender"):
+            self.email_sender.stop_sending()
+            self.display_log("🛑 Email sending stopped by user")
         if hasattr(self, "coordinator"):
             self.coordinator.stop_sending()
 
@@ -2183,8 +2383,17 @@ class Prepare_send_mail(QtWidgets.QWidget):
         print(f"[LOG] {message}")
         # Optionally show logs on UI (if you have a QTextEdit or QLabel)
         log_text = self.page_log.findChild(QtWidgets.QPlainTextEdit, "txt_log")
-        message=message + "\n"
-        log_text.appendPlainText(message)
+        if log_text:
+            message = message + "\n"
+            log_text.appendPlainText(message)
+            # Auto-scroll to bottom
+            cursor = log_text.textCursor()
+            cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
+            log_text.setTextCursor(cursor)
+    
+    def _email_sender_callback(self, message):
+        """Callback function for EmailSender to display logs"""
+        self.display_log(message)
     def __move_file_into_safe_place(self):
         if os.path.exists("AppData/Local") == False:
             os.mkdir("AppData/Local")
@@ -2234,124 +2443,49 @@ class Prepare_send_mail(QtWidgets.QWidget):
             self.__kill_or_continue_sending()
 
     def _apply_email_info_styles(self):
-        """Apply modern UI/UX styling to page_email_info elements"""
+        """Apply modern UI/UX styling to page_email_info elements using style manager"""
         if not self.page_email_info:
             return
         
-        # Style input fields (txt_email, txt_password)
-        input_style = (
-            "background-color: #1E293B; "
-            "border: 1px solid #334155; "
-            "border-radius: 10px; "
-            "padding: 12px 16px; "
-            "color: #E2E8F0; "
-            "font-size: 14px; "
-            "min-height: 20px;"
-        )
-        
+        # Style input fields using style manager
         txt_email = self.page_email_info.findChild(QtWidgets.QLineEdit, "txt_email")
         if txt_email:
-            txt_email.setStyleSheet(input_style)
+            txt_email.setStyleSheet(UIStyleManager.get_input_style())
             txt_email.setPlaceholderText("Your email address")
         
         txt_password = self.page_email_info.findChild(QtWidgets.QLineEdit, "txt_password")
         if txt_password:
-            txt_password.setStyleSheet(input_style)
+            txt_password.setStyleSheet(UIStyleManager.get_input_style())
             txt_password.setPlaceholderText("Your email password")
             txt_password.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
         
-        # Style primary action button (btn_send_email - Start Sending Emails)
-        primary_button_style = (
-            "QPushButton {"
-            "background-color: #10B981; "
-            "border: none; "
-            "border-radius: 10px; "
-            "padding: 14px 24px; "
-            "font-weight: 600; "
-            "font-size: 15px; "
-            "color: #FFFFFF; "
-            "min-height: 24px;"
-            "}"
-            "QPushButton:hover {"
-            "background-color: #059669;"
-            "}"
-            "QPushButton:pressed {"
-            "background-color: #047857;"
-            "}"
-            "QPushButton:disabled {"
-            "background-color: #065F46; "
-            "color: #94A3B8;"
-            "}"
-        )
-        
+        # Style buttons using style manager
         if self.btn_send_real_mail:
-            self.btn_send_real_mail.setStyleSheet(primary_button_style)
+            self.btn_send_real_mail.setStyleSheet(UIStyleManager.get_button_primary_style())
             self.btn_send_real_mail.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        # Style secondary action button (btn_send_test - Send Test Email)
-        secondary_button_style = (
-            "QPushButton {"
-            "background-color: #2563EB; "
-            "border: none; "
-            "border-radius: 10px; "
-            "padding: 14px 24px; "
-            "font-weight: 600; "
-            "font-size: 15px; "
-            "color: #FFFFFF; "
-            "min-height: 24px;"
-            "}"
-            "QPushButton:hover {"
-            "background-color: #1D4ED8;"
-            "}"
-            "QPushButton:pressed {"
-            "background-color: #1E40AF;"
-            "}"
-            "QPushButton:disabled {"
-            "background-color: #1E3A8A; "
-            "color: #94A3B8;"
-            "}"
-        )
-        
         if self.btn_send_test_mail:
-            self.btn_send_test_mail.setStyleSheet(secondary_button_style)
+            self.btn_send_test_mail.setStyleSheet(UIStyleManager.get_button_secondary_style())
             self.btn_send_test_mail.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        # Style back button (btn_email_info_back)
-        back_button_style = (
-            "QPushButton {"
-            "background-color: #374151; "
-            "border: 1px solid #4B5563; "
-            "border-radius: 10px; "
-            "padding: 12px 20px; "
-            "font-weight: 500; "
-            "font-size: 14px; "
-            "color: #E5E7EB; "
-            "min-height: 20px;"
-            "}"
-            "QPushButton:hover {"
-            "background-color: #4B5563; "
-            "border-color: #6B7280;"
-            "}"
-            "QPushButton:pressed {"
-            "background-color: #1F2937;"
-            "}"
-        )
-        
         if self.btn_email_info_back:
-            self.btn_email_info_back.setStyleSheet(back_button_style)
+            self.btn_email_info_back.setStyleSheet(UIStyleManager.get_button_tertiary_style())
             self.btn_email_info_back.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        # Style labels for better readability
-        label_style = (
-            "color: #E5E7EB; "
-            "font-size: 14px; "
-            "font-weight: 500;"
-        )
-        
-        # Find and style all QLabels in page_email_info
+        # Style labels using style manager
         for label in self.page_email_info.findChildren(QtWidgets.QLabel):
-            if label.objectName() and "label" in label.objectName().lower():
-                label.setStyleSheet(label_style)
+            if label.objectName():
+                obj_name = label.objectName()
+                # Determine label size based on object name
+                if "email_info_notice" in obj_name:
+                    # Important notice - larger
+                    label.setStyleSheet(UIStyleManager.get_label_style('lg', 'semibold'))
+                elif "email_field" in obj_name or "password_field" in obj_name:
+                    # Field labels - medium size
+                    label.setStyleSheet(UIStyleManager.get_label_style('lg', 'semibold'))
+                elif "label" in obj_name.lower():
+                    # Default labels
+                    label.setStyleSheet(UIStyleManager.get_label_style('base', 'medium'))
     
     def __load_data_from_DB(self, id):
         """Legacy method - kept for backward compatibility"""
@@ -2422,6 +2556,8 @@ class Professor_lists():
     
     def upload_data_from_local(self):
         """Upload CSV/Excel file with file size limits, folder cleanup, and rate limiting"""
+        warnings = []  # Collect all warnings here
+        
         if not self.user_email:
             QMessageBox.warning(
                 self.widget,
@@ -2443,21 +2579,17 @@ class Professor_lists():
         # Check rate limit
         allowed, rate_msg = self.file_manager.check_rate_limit(self.user_email)
         if not allowed:
-            QMessageBox.warning(
-                self.widget,
-                "Upload Limit Reached",
-                rate_msg
-            )
+            warnings.append(f"Upload Limit Reached: {rate_msg}")
+            dialog = WarningsDialog(self.widget, warnings)
+            dialog.exec()
             return
 
         # Check file size
         valid_size, size_msg = self.file_manager.check_file_size(file_path)
         if not valid_size:
-            QMessageBox.warning(
-                self.widget,
-                "File Too Large",
-                size_msg
-            )
+            warnings.append(f"File Too Large: {size_msg}")
+            dialog = WarningsDialog(self.widget, warnings)
+            dialog.exec()
             return
 
         # Process file first to validate it
@@ -2468,20 +2600,123 @@ class Professor_lists():
             headers = values["header"]
             nans = values["nans"]
         except Exception as e:
+            warnings.append(f"Failed to read file: {str(e)}")
+            dialog = WarningsDialog(self.widget, warnings)
+            dialog.exec()
+            return
+
+        # Check for professor_email column (case-insensitive)
+        professor_email_col = None
+        for col in df.columns:
+            if col.lower().strip() == 'professor_email':
+                professor_email_col = col
+                break
+        
+        if professor_email_col is None:
             QMessageBox.critical(
                 self.widget,
-                "Error",
-                f"Failed to read file:\n{str(e)}"
+                "Missing Required Column",
+                "There is no professor_email column. Please create (or rename) a column called professor_email containing professor emails."
             )
             return
 
-        # Show warnings for empty columns
+        # Check for country_city column and validate format
+        country_city_col = None
+        for col in df.columns:
+            if col.lower().strip() == 'country_city':
+                country_city_col = col
+                break
+        
+        country_city_warning = None
+        if country_city_col is None:
+            # Column is missing
+            country_city_warning = "If country_city is empty I cannot send email based on professor local time and I have to send email based on your local time."
+        else:
+            # Validate format: should be "country/city"
+            invalid_rows = []
+            empty_rows = []
+            for idx, row in df.iterrows():
+                value = row[country_city_col]
+                if pd.notna(value) and value:
+                    value_str = str(value).strip()
+                    # Check if format is "country/city" (contains exactly one forward slash)
+                    if '/' not in value_str or value_str.count('/') != 1:
+                        invalid_rows.append(idx + 1)  # +1 for 1-based row numbers
+                else:
+                    empty_rows.append(idx + 1)
+            
+            if invalid_rows or empty_rows:
+                warning_parts = []
+                if invalid_rows:
+                    warning_parts.append(f"Found invalid format in row(s): {', '.join(map(str, invalid_rows[:10]))}"
+                                       f"{' and more...' if len(invalid_rows) > 10 else ''}")
+                if empty_rows:
+                    warning_parts.append(f"Found empty values in row(s): {', '.join(map(str, empty_rows[:10]))}"
+                                       f"{' and more...' if len(empty_rows) > 10 else ''}")
+                
+                country_city_warning = f"If country_city is empty I cannot send email based on professor local time and I have to send email based on your local time.\n\n" + "\n".join(warning_parts) + "\n\nPlease ensure the format is 'country/city' (e.g., 'iran/tehran', 'usa/new york')."
+        
+        # Add country_city warning to warnings list (not as popup, as per user request)
+        if country_city_warning:
+            warnings.append(country_city_warning)
+
+        # Add required columns if they don't exist
+        required_columns = {
+            'main_mail_time': None,
+            'reminder_one_time': None,
+            'reminder_second_time': None,
+            'reminder_thrid_time': None,
+            'message_id': None
+        }
+        
+        for col_name in required_columns.keys():
+            if col_name not in df.columns:
+                df[col_name] = None
+
+        # Add country_city_applyche column if it doesn't exist
+        if 'country_city_applyche' not in df.columns:
+            df['country_city_applyche'] = None
+        if 'applyche_description' not in df.columns:
+            df['applyche_description'] = None
+        if 'answered' not in df.columns:
+            df["answered"] = None
+        if 'answer_text' not in df.columns:
+            df["answer_text"]= None
+
+        # Populate country_city_applyche based on professor_email
+        for idx, row in df.iterrows():
+            email = row[professor_email_col]
+            if pd.notna(email) and email:
+                country_city = get_country_city_string(str(email))
+                df.at[idx, 'country_city_applyche'] = country_city
+
+        # Validate that first row is header (pandas requirement)
+        if len(df.columns) == 0:
+            warnings.append("File must have a header row as the first row. Please ensure your CSV/Excel file has column names in the first row.")
+            dialog = WarningsDialog(self.widget, warnings)
+            dialog.exec()
+            return
+        
+        # Save modified dataframe back to the original file in raw, simple format
+        try:
+            if file_path.endswith('.xlsx'):
+                # Save as raw Excel without formatting
+                df.to_excel(file_path, index=False, engine='openpyxl', header=True)
+            elif file_path.endswith('.csv'):
+                # Save as raw CSV without formatting
+                df.to_csv(file_path, index=False, header=True, encoding='utf-8')
+            elif file_path.endswith('.xls'):
+                # For .xls files, convert to xlsx format (raw)
+                new_path = file_path.replace('.xls', '.xlsx')
+                df.to_excel(new_path, index=False, engine='openpyxl', header=True)
+                if new_path != file_path:
+                    file_path = new_path
+        except Exception as e:
+            warnings.append(f"Failed to save modifications to file: {str(e)}. Continuing with original file...")
+
+        # Collect warnings for empty columns
         for k in nans.keys():
-            QMessageBox.warning(
-                self.widget,
-                "Some columns are empty",
-                f"I have found {len(nans[k])} empty value(s) in '{k}' column. This may affect your email process!!"
-            )
+            warnings.append(f"Found {len(nans[k])} empty value(s) in '{k}' column. This may affect your email process!")
 
         # Save file to uploaded_folders/{user_email}/professor_list/
         success, save_msg, saved_path = self.file_manager.save_file(
@@ -2491,12 +2726,22 @@ class Professor_lists():
         )
 
         if not success:
-            QMessageBox.warning(
-                self.widget,
-                "Save Failed",
-                save_msg
-            )
+            warnings.append(f"Save Failed: {save_msg}")
+            dialog = WarningsDialog(self.widget, warnings)
+            dialog.exec()
             return
+
+        # Ensure saved_path has the modified dataframe (save again to be safe) in raw format
+        if saved_path:
+            try:
+                if str(saved_path).endswith('.xlsx'):
+                    # Save as raw Excel without formatting
+                    df.to_excel(str(saved_path), index=False, engine='openpyxl', header=True)
+                elif str(saved_path).endswith('.csv'):
+                    # Save as raw CSV without formatting
+                    df.to_csv(str(saved_path), index=False, header=True, encoding='utf-8')
+            except Exception as e:
+                print(f"Warning: Could not update saved file with modifications: {e}")
 
         # Save to database via API
         db_saved = False
@@ -2513,11 +2758,7 @@ class Professor_lists():
                     print("API not available - file saved locally but not to database")
             except Exception as e:
                 print(f"Error saving to database: {e}")
-                QMessageBox.warning(
-                    self.widget,
-                    "Database Save Warning",
-                    f"File saved locally but failed to save to database:\n{str(e)}"
-                )
+                warnings.append(f"File saved locally but failed to save to database: {str(e)}")
 
         # Store in memory for immediate use
         df.columns = df.columns.str.strip().str.lower()
@@ -2526,20 +2767,34 @@ class Professor_lists():
         # Populate table
         self._populate_table(df)
 
-        # Show success message
-        stats = self.file_manager.get_user_upload_stats(self.user_email)
-        success_msg = f"✅ File uploaded successfully!\n\n"
-        success_msg += f"Saved to: {saved_path}\n"
-        success_msg += f"File size: {size_msg}\n"
-        if db_saved:
-            success_msg += f"✅ Saved to database\n"
-        success_msg += f"\nUpload stats: {stats['today_count']}/{stats['max_per_day']} uploads today"
-        
-        QMessageBox.information(
-            self.widget,
-            "Upload Successful",
-            success_msg
-        )
+        # Show warnings dialog if there are any warnings, otherwise show success message
+        if warnings:
+            dialog = WarningsDialog(self.widget, warnings)
+            dialog.exec()
+        else:
+            # Show success popup with green OK button
+            success_msg = QMessageBox(self.widget)
+            success_msg.setWindowTitle("Upload Successful")
+            success_msg.setText("Your CSV/Excel satisfied all requirements!")
+            success_msg.setIcon(QMessageBox.Icon.Information)
+            success_msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            # Style the OK button to be green
+            ok_button = success_msg.button(QMessageBox.StandardButton.Ok)
+            if ok_button:
+                ok_button.setStyleSheet("""
+                    QPushButton {
+                        background-color: #28a745;
+                        color: white;
+                        padding: 8px 20px;
+                        border-radius: 4px;
+                        font-size: 14px;
+                        min-width: 80px;
+                    }
+                    QPushButton:hover {
+                        background-color: #218838;
+                    }
+                """)
+            success_msg.exec()
 
     def _populate_table(self, df: pd.DataFrame):
         self.tbl_professors_list.clear()

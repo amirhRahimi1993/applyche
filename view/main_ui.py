@@ -435,6 +435,31 @@ class MyWindow(QtWidgets.QMainWindow):
             self._set_active_nav(self.btn_expriences, "Experiences", self.page_write_your_exprience)
         if hasattr(self, "page_write_your_exprience"):
             self.stacked_content.setCurrentWidget(self.page_write_your_exprience)
+            # Ensure scroll area is properly configured
+            self._setup_experience_scroll_area()
+    
+    def _setup_experience_scroll_area(self):
+        """Setup and configure the scroll area for the experiences page"""
+        scroll_area = getattr(self, "scrollArea_experience", None)
+        if not scroll_area:
+            # Try to find it in the page
+            if hasattr(self, "page_write_your_exprience"):
+                scroll_area = self.page_write_your_exprience.findChild(QtWidgets.QScrollArea, "scrollArea_experience")
+        
+        if scroll_area:
+            # Ensure scroll area is properly configured
+            scroll_area.setWidgetResizable(True)
+            scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            
+            # Get the widget contents
+            scroll_widget = scroll_area.widget()
+            if scroll_widget:
+                # Ensure the widget has proper size policy
+                scroll_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.MinimumExpanding)
+                
+                # Update the minimum size to ensure scrolling works
+                scroll_widget.setMinimumHeight(1000)  # Match the height in UI file
 
     def btn_page_results(self):
         self._set_active_nav(self.btn_results, "Results", self.page_results)

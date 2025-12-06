@@ -160,6 +160,15 @@ class LoginDialog(QtWidgets.QDialog):
         layout.addWidget(helper)
 
         self.password_input.returnPressed.connect(self._attempt_login)
+        
+        # Ensure dialog can be closed gracefully
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+
+    def closeEvent(self, event):
+        """Handle dialog close event gracefully"""
+        # Reject the dialog if user closes it (X button or Escape)
+        self.reject()
+        event.accept()
 
     def _input_style(self) -> str:
         return (
@@ -183,6 +192,11 @@ class LoginDialog(QtWidgets.QDialog):
             self._show_status("Email and password are required.")
             return
 
+        # Basic email format validation
+        if "@" not in email or "." not in email.split("@")[-1]:
+            self._show_status("Please enter a valid email address.")
+            return
+
         self._set_loading(True)
         try:
             response = self.api_client.login(email=email, password=password)
@@ -196,11 +210,19 @@ class LoginDialog(QtWidgets.QDialog):
                     detail = exc.response.json()
                     if isinstance(detail, dict) and detail.get("detail"):
                         message = detail["detail"]
-                except ValueError:
+                except (ValueError, KeyError, AttributeError):
+                    # If we can't parse the error, use default message
                     pass
             self._show_status(message)
-        except requests.exceptions.RequestException:
+        except requests.exceptions.ConnectionError:
+            self._show_status("Unable to connect to the API server. Please check if the server is running.")
+        except requests.exceptions.Timeout:
+            self._show_status("Request timed out. Please try again.")
+        except requests.exceptions.RequestException as e:
             self._show_status("Unable to reach the API server. Please try again.")
+        except Exception as e:
+            # Catch any other unexpected errors to prevent app crash
+            self._show_status("An unexpected error occurred. Please try again.")
         finally:
             self._set_loading(False)
 
@@ -227,6 +249,7 @@ class MyWindow(QtWidgets.QMainWindow):
         self.user_email = user_email
         self.display_name = display_name or user_email
         self.api_client = api_client or ApplyCheAPIClient("http://localhost:8000", timeout=5)
+        self._is_logging_out = False  # Flag to track if we're in logout process
         uic.loadUi("../applyche_main_ui.ui", self)
         self.setWindowTitle("ApplyChe")
 
@@ -389,17 +412,64 @@ class MyWindow(QtWidgets.QMainWindow):
             self.close()
             return
 
+        # Set flag to indicate we're logging out (prevents closeEvent from quitting app)
+        self._is_logging_out = True
+        
+        # Store reference to self before hiding
+        old_window = self
+        
+        # Hide the window first
         self.hide()
+        
+        # Process any pending events to ensure UI is updated
+        QtWidgets.QApplication.processEvents()
 
         def _open_login():
-            new_window = launch_main_window(app)
-            if not new_window:
+            try:
+                new_window = launch_main_window(app)
+                if not new_window:
+                    # User closed login dialog - quit the app gracefully
+                    old_window._is_logging_out = False  # Reset flag
+                    old_window.close()
+                    old_window.deleteLater()
+                    app.quit()
+                    return
+
+                # New window created successfully - ensure it's shown and active
+                if new_window:
+                    new_window.show()
+                    new_window.raise_()
+                    new_window.activateWindow()
+                    # Process events to ensure new window is fully displayed
+                    QtWidgets.QApplication.processEvents()
+                
+                # Now safely close and delete old window (after new one is shown)
+                # The _is_logging_out flag prevents closeEvent from quitting the app
+                old_window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+                old_window.close()
+                old_window.deleteLater()
+            except Exception as e:
+                # Handle any errors gracefully
+                print(f"Error during logout/login: {e}")
+                old_window._is_logging_out = False  # Reset flag
+                old_window.close()
+                old_window.deleteLater()
                 app.quit()
 
-            # Current window is no longer needed.
-            self.deleteLater()
-
-        QtCore.QTimer.singleShot(0, _open_login)
+        QtCore.QTimer.singleShot(100, _open_login)
+    
+    def closeEvent(self, event):
+        """Handle window close event - prevent app quit during logout"""
+        if self._is_logging_out:
+            # We're in the logout process, just accept the close
+            # The new window is already shown, so don't quit the app
+            event.accept()
+        else:
+            # Normal close - quit the app
+            app = QtWidgets.QApplication.instance()
+            if app:
+                app.quit()
+            event.accept()
 
     def _set_active_nav(self, button, title, page_widget=None):
         if page_widget is not None and self.stacked_content.currentWidget() is not page_widget:
@@ -2659,26 +2729,44 @@ class Search_Professors(QtWidgets.QWidget):
         pass
 
 def launch_main_window(app: QtWidgets.QApplication) -> Optional[QtWidgets.QMainWindow]:
-    api_client = ApplyCheAPIClient("http://localhost:8000", timeout=5)
-    login_dialog = LoginDialog(api_client)
-    result = login_dialog.exec()
-    if result != QDialog.DialogCode.Accepted or not login_dialog.user_email:
-        return None
-
-    loading = LoadingOverlay()
-    loading.show()
-    QtWidgets.QApplication.processEvents()
+    """Launch login dialog and create main window if login succeeds"""
     try:
-        window = MyWindow(
-            user_email=login_dialog.user_email,
-            display_name=login_dialog.display_name,
-            api_client=api_client,
-        )
-    finally:
-        loading.close()
+        api_client = ApplyCheAPIClient("http://localhost:8000", timeout=5)
+        login_dialog = LoginDialog(api_client)
+        result = login_dialog.exec()
+        
+        # If dialog was rejected or closed, return None
+        if result != QDialog.DialogCode.Accepted or not login_dialog.user_email:
+            # Clean up dialog
+            login_dialog.close()
+            login_dialog.deleteLater()
+            return None
 
-    window.show()
-    return window
+        # Login successful - create main window
+        loading = LoadingOverlay()
+        loading.show()
+        QtWidgets.QApplication.processEvents()
+        
+        try:
+            window = MyWindow(
+                user_email=login_dialog.user_email,
+                display_name=login_dialog.display_name,
+                api_client=api_client,
+            )
+        finally:
+            loading.close()
+            loading.deleteLater()
+
+        # Clean up login dialog
+        login_dialog.close()
+        login_dialog.deleteLater()
+        
+        window.show()
+        return window
+    except Exception as e:
+        # Handle any errors during login/window creation
+        print(f"Error in launch_main_window: {e}")
+        return None
 
 
 def main():

@@ -330,6 +330,7 @@ class MyWindow(QtWidgets.QMainWindow):
             getattr(self, "btn_professor_list", None),
             getattr(self, "btn_prepare_send_email", None),
             getattr(self, "btn_statics", None),
+            getattr(self, "btn_expriences", None),
             getattr(self, "btn_results", None),
         ]
         self._nav_buttons = [btn for btn in self._nav_buttons if btn is not None]
@@ -392,6 +393,8 @@ class MyWindow(QtWidgets.QMainWindow):
 
         self.btn_home.clicked.connect(self.__btn_page_home_arise)
         self.btn_email_template.clicked.connect(self.__btn_page_email_template)
+        if hasattr(self, "btn_expriences") and self.btn_expriences:
+            self.btn_expriences.clicked.connect(self.btn_page_expriences)
         self.btn_results.clicked.connect(self.btn_page_results)
         self.btn_prepare_send_email.clicked.connect(self.btn_page_prepare_send_email)
         self.btn_statics.clicked.connect(self.btn_page_statics)
@@ -426,6 +429,12 @@ class MyWindow(QtWidgets.QMainWindow):
         # Load professor list and show in table when email template page is opened
         if hasattr(self, 'professorList') and self.professorList:
             self.professorList.load_professor_list_from_db()
+
+    def btn_page_expriences(self):
+        if hasattr(self, "btn_expriences") and self.btn_expriences:
+            self._set_active_nav(self.btn_expriences, "Experiences", self.page_write_your_exprience)
+        if hasattr(self, "page_write_your_exprience"):
+            self.stacked_content.setCurrentWidget(self.page_write_your_exprience)
 
     def btn_page_results(self):
         self._set_active_nav(self.btn_results, "Results", self.page_results)
@@ -615,6 +624,7 @@ class MyWindow(QtWidgets.QMainWindow):
             getattr(self, "btn_professor_list", None): QtWidgets.QStyle.StandardPixmap.SP_DirIcon,
             getattr(self, "btn_prepare_send_email", None): QtWidgets.QStyle.StandardPixmap.SP_ArrowForward,
             getattr(self, "btn_statics", None): QtWidgets.QStyle.StandardPixmap.SP_DesktopIcon,
+            getattr(self, "btn_expriences", None): QtWidgets.QStyle.StandardPixmap.SP_FileDialogInfoView,
             getattr(self, "btn_results", None): QtWidgets.QStyle.StandardPixmap.SP_DialogApplyButton,
         }
 
